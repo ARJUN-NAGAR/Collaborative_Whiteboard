@@ -17,9 +17,13 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
 
     public User register(User user) {
+        // Check if email already taken
+        if (userRepository.findByEmail(user.getEmail()).isPresent()) {
+            throw new RuntimeException("Email already registered: " + user.getEmail());
+        }
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         user.setCreatedAt(LocalDateTime.now());
-        user.setActive(true);
+        user.setIsActive(true);   // Boolean wrapper — setIsActive not setActive
         return userRepository.save(user);
     }
 

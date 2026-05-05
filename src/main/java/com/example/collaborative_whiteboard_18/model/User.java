@@ -1,9 +1,6 @@
 package com.example.collaborative_whiteboard_18.model;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -27,7 +24,10 @@ public class User {
 
     private String role; // USER / ADMIN
 
-    private boolean isActive;
+    // BUG FIX: was primitive boolean — Jackson cannot map null → boolean
+    // when the field is absent from the request body (register sends only name/email/password).
+    // Using the Boolean wrapper allows null safely.
+    private Boolean isActive;
 
     private LocalDateTime createdAt;
 }

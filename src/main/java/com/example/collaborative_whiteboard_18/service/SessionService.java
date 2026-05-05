@@ -85,7 +85,7 @@ public class SessionService {
         // Count unique online participants across active sessions
         long onlineUsers = sessionRepository.findByActiveTrue().stream()
                 .flatMap(s -> s.getParticipants().stream())
-                .filter(Participant::isOnline)
+                .filter(p -> Boolean.TRUE.equals(p.getIsOnline()))
                 .map(Participant::getUserId)
                 .distinct()
                 .count();

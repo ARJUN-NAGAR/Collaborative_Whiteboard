@@ -1,9 +1,6 @@
 package com.example.collaborative_whiteboard_18.model;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 @Data
 @NoArgsConstructor
@@ -15,6 +12,6 @@ public class Participant {
 
     private String role; // OWNER / EDITOR / VIEWER
 
-
-    private boolean isOnline;
+    // BUG FIX: same as User.isActive — Boolean wrapper prevents null-mapping crash
+    private Boolean isOnline;
 }
