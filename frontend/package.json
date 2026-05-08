@@ -9,13 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@stomp/stompjs": "^7.0.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.1",
+    "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "@stomp/stompjs": "^7.0.0",
+    "simple-peer": "^9.11.1",
     "sockjs-client": "^1.6.1",
-    "jspdf": "^2.5.1",
-    "html2canvas": "^1.4.1",
-    "lucide-react": "^0.460.0",
     "uuid": "^10.0.0"
   },
   "devDependencies": {

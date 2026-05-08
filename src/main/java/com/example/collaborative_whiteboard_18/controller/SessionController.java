@@ -76,7 +76,7 @@ public class SessionController {
     public ResponseEntity<?> updateElements(@PathVariable String id,
                                             @RequestBody UpdateElementsRequest req) {
         try {
-            WhiteboardSession updated = sessionService.updateElements(id, req.getElementsJson());
+            WhiteboardSession updated = sessionService.updateElements(id, req.getElements());
             return ResponseEntity.ok(updated);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();

@@ -4,6 +4,11 @@ import com.example.collaborative_whiteboard_18.model.Participant;
 import com.example.collaborative_whiteboard_18.model.WhiteboardSession;
 import com.example.collaborative_whiteboard_18.repository.WhiteboardSessionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
+import com.mongodb.client.result.UpdateResult;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -14,6 +19,7 @@ import java.util.*;
 public class SessionService {
 
     private final WhiteboardSessionRepository sessionRepository;
+    private final MongoTemplate mongoTemplate;
 
     // ✅ Create Session
     public WhiteboardSession createSession(String name, String ownerName, String ownerId) {
@@ -26,7 +32,7 @@ public class SessionService {
                 .active(true)
                 .shareCode(UUID.randomUUID().toString().substring(0, 6).toUpperCase())
                 .participants(new ArrayList<>())
-                .elementsJson("[]")
+                .elements(new ArrayList<>())
                 .build();
 
         session.getParticipants().add(
@@ -56,12 +62,29 @@ public class SessionService {
         return sessionRepository.findById(sessionId);
     }
 
-    // ✅ Update Canvas Elements (auto-save from frontend every 10s)
-    public WhiteboardSession updateElements(String sessionId, String elementsJson) {
+    // ✅ Update Canvas Elements (Delta Sync / Overwrite)
+    public WhiteboardSession updateElements(String sessionId, List<Map<String, Object>> elements) {
         WhiteboardSession session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found: " + sessionId));
-        session.setElementsJson(elementsJson);
+        session.setElements(elements);
         return sessionRepository.save(session);
+    }
+
+    // ✅ Upsert a single Canvas Element (Delta Sync)
+    public void upsertElement(String sessionId, Map<String, Object> element) {
+        String elementId = (String) element.get("id");
+        if (elementId == null) return;
+        
+        Query query = new Query(Criteria.where("id").is(sessionId).and("elements.id").is(elementId));
+        Update update = new Update().set("elements.$", element);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, WhiteboardSession.class);
+        
+        if (result.getModifiedCount() == 0) {
+            // Element not found, push it
+            Query pushQuery = new Query(Criteria.where("id").is(sessionId));
+            Update pushUpdate = new Update().push("elements", element);
+            mongoTemplate.updateFirst(pushQuery, pushUpdate, WhiteboardSession.class);
+        }
     }
 
     // ✅ Delete Session

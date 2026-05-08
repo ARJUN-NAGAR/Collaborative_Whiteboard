@@ -4,7 +4,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -21,26 +24,23 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-
         http
-                // Let Spring Security use our CorsConfigurationSource (fixes 403 on preflight)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .csrf(csrf -> csrf.disable())
+                .csrf(csrf -> csrf.disable()) // Disabled for JWT stateless APIs
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-
-                        // ── Always public ──────────────────────────────────────────
+                        // Auth & WebSockets
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
 
-                        // CORS preflight requests must never be blocked
+                        // Allow OPTIONS for all paths (Fixes the 403 Preflight error)
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // Landing-page stats — readable without login
-                        .requestMatchers(HttpMethod.GET, "/api/sessions").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/sessions/analytics").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/sessions/active").permitAll()
+                        // Public Data Endpoints (Add whatever endpoint returns your JSON list here)
+                        .requestMatchers(HttpMethod.GET, "/api/sessions", "/api/sessions/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/whiteboards", "/api/whiteboards/**").permitAll()
 
-                        // ── Everything else requires a valid JWT ───────────────────
+                        // Everything else protected
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
@@ -48,19 +48,20 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /**
-     * CORS configuration referenced by Spring Security.
-     * Keeps the CorsFilter bean in CorsConfig for non-security requests and
-     * mirrors the same rules here so security interceptors don't block preflight.
-     */
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
+        // Be specific in production, but for dev:
         config.setAllowedOriginPatterns(List.of("*"));
-        config.setAllowedHeaders(List.of("*"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setExposedHeaders(List.of("Authorization"));
-        config.setAllowCredentials(false);
+        config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);

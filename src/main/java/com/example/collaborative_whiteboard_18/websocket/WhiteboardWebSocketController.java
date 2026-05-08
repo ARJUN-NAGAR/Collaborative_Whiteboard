@@ -19,6 +19,7 @@ public class WhiteboardWebSocketController {
     private final SimpMessagingTemplate messagingTemplate;
     private final DrawingService drawingService;
     private final ChatService chatService;
+    private final com.example.collaborative_whiteboard_18.service.SessionService sessionService;
 
     /**
      * 🎨 Drawing events (ELEMENT_ADD, ELEMENT_DELETE, CLEAR)
@@ -29,8 +30,10 @@ public class WhiteboardWebSocketController {
     @MessageMapping("/draw")
     public void handleDrawing(@Payload WebSocketMessage message) {
 
-        // Persist non-cursor events
-        if (message.getType() != null && !message.getType().equals("CURSOR_MOVE")) {
+        // Persist non-cursor and non-webrtc events
+        if (message.getType() != null && 
+            !message.getType().equals("CURSOR_MOVE") && 
+            !message.getType().equals("WEBRTC_SIGNAL")) {
             DrawingEvent event = DrawingEvent.builder()
                     .sessionId(message.getSessionId())
                     .userId(message.getUserId())
@@ -39,9 +42,37 @@ public class WhiteboardWebSocketController {
                     .timestamp(LocalDateTime.now())
                     .build();
             drawingService.saveEvent(event);
+
+            // Delta-Sync element persistence
+            if (message.getType().equals("ELEMENT_ADD") || message.getType().equals("ELEMENT_UPDATE")) {
+                if (message.getAdditionalProperties().containsKey("element")) {
+                    java.util.Map<String, Object> element = (java.util.Map<String, Object>) message.getAdditionalProperties().get("element");
+                    sessionService.upsertElement(message.getSessionId(), element);
+                }
+            } else if (message.getType().equals("CLEAR")) {
+                sessionService.updateElements(message.getSessionId(), new java.util.ArrayList<>());
+            }
         }
 
         // BUG FIX: broadcast to /topic/board/{sessionId} (frontend subscribes here)
+        messagingTemplate.convertAndSend(
+                "/topic/board/" + message.getSessionId(),
+                message
+        );
+    }
+
+    /**
+     * ✋ Hand Raise Event
+     *
+     * Frontend sends to:
+     * /app/handraise
+     *
+     * Frontend listens on:
+     * /topic/board/{sessionId}
+     */
+    @MessageMapping("/handraise")
+    public void handleHandRaise(@Payload WebSocketMessage message) {
+
         messagingTemplate.convertAndSend(
                 "/topic/board/" + message.getSessionId(),
                 message

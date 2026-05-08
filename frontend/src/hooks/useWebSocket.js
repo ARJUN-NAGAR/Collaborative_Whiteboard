@@ -4,10 +4,12 @@ import { Client } from '@stomp/stompjs';
 const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8080/ws';
 
 export function useWebSocket({ sessionId, onBoardEvent, onChatEvent }) {
+
   const clientRef = useRef(null);
   const connectedRef = useRef(false);
 
   useEffect(() => {
+
     if (!sessionId) return;
 
     const client = new Client({
@@ -15,22 +17,35 @@ export function useWebSocket({ sessionId, onBoardEvent, onChatEvent }) {
       reconnectDelay: 3000,
 
       onConnect: () => {
+
         connectedRef.current = true;
 
-        // Board events: drawing, cursor, join, leave
-        // BUG FIX: backend now publishes to /topic/board/{id} (was /topic/session/{id})
+        // ✅ Board events
         client.subscribe(`/topic/board/${sessionId}`, (msg) => {
-          try { onBoardEvent && onBoardEvent(JSON.parse(msg.body)); } catch {}
+          try {
+            onBoardEvent && onBoardEvent(JSON.parse(msg.body));
+          } catch (err) {
+            console.error('Board event parse error:', err);
+          }
         });
 
-        // Chat events on separate topic
-        // BUG FIX: backend now publishes to /topic/chat/{id} (was /topic/session/{id})
+        // ✅ Chat events
         client.subscribe(`/topic/chat/${sessionId}`, (msg) => {
-          try { onChatEvent && onChatEvent(JSON.parse(msg.body)); } catch {}
+          try {
+            onChatEvent && onChatEvent(JSON.parse(msg.body));
+          } catch (err) {
+            console.error('Chat event parse error:', err);
+          }
         });
       },
 
-      onDisconnect: () => { connectedRef.current = false; },
+      onDisconnect: () => {
+        connectedRef.current = false;
+      },
+
+      onStompError: (frame) => {
+        console.error('STOMP error:', frame);
+      }
     });
 
     client.activate();
@@ -40,41 +55,102 @@ export function useWebSocket({ sessionId, onBoardEvent, onChatEvent }) {
       client.deactivate();
       connectedRef.current = false;
     };
-  }, [sessionId]);
 
+  }, [sessionId, onBoardEvent, onChatEvent]);
+
+  /**
+   * ✅ Generic sender
+   */
   const send = useCallback((destination, payload) => {
+
     if (clientRef.current?.connected) {
+
       clientRef.current.publish({
         destination,
         body: JSON.stringify(payload),
       });
+
+    } else {
+      console.warn('WebSocket not connected');
     }
+
   }, []);
 
-  const sendDraw   = useCallback((event) => send('/app/draw',   event), [send]);
-  const sendCursor = useCallback((event) => send('/app/cursor', event), [send]);
-  const sendJoin   = useCallback((event) => send('/app/join',   event), [send]);
-  const sendLeave  = useCallback((event) => send('/app/leave',  event), [send]);
+  /**
+   * 🎨 Drawing
+   */
+  const sendDraw = useCallback((event) => {
+    send('/app/draw', event);
+  }, [send]);
 
-  // BUG FIX: include senderName + senderColor inside data{} so backend can
-  // persist them in ChatMessage (chatService reads them from data map)
+  /**
+   * 🖱 Cursor
+   */
+  const sendCursor = useCallback((event) => {
+    send('/app/cursor', event);
+  }, [send]);
+
+  /**
+   * 👤 Join
+   */
+  const sendJoin = useCallback((event) => {
+    send('/app/join', event);
+  }, [send]);
+
+  /**
+   * 🚪 Leave
+   */
+  const sendLeave = useCallback((event) => {
+    send('/app/leave', event);
+  }, [send]);
+
+  /**
+   * 💬 Chat
+   */
   const sendChat = useCallback((msg) => {
+
     send('/app/chat', {
       ...msg,
       data: {
-        content:     msg.content,
-        senderName:  msg.senderName,
+        content: msg.content,
+        senderName: msg.senderName,
         senderColor: msg.senderColor,
       },
     });
+
   }, [send]);
+
+  /**
+   * ✋ Hand Raise
+   */
+  const sendHandRaise = useCallback((event) => {
+
+    send('/app/handraise', {
+      ...event,
+      type: 'HAND_RAISE',
+    });
+
+  }, [send]);
+
+  /**
+   * 📡 WebRTC Signaling
+   */
+  const sendWebrtcSignal = useCallback((signalData) => {
+    send('/app/draw', {
+      type: 'WEBRTC_SIGNAL',
+      sessionId,
+      ...signalData
+    });
+  }, [send, sessionId]);
 
   return {
     sendDraw,
     sendCursor,
-    sendChat,
     sendJoin,
     sendLeave,
+    sendChat,
+    sendHandRaise,
+    sendWebrtcSignal,
     isConnected: () => connectedRef.current,
   };
 }

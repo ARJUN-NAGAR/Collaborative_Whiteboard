@@ -5,6 +5,10 @@ import WhiteboardCanvas from './WhiteboardCanvas';
 import Toolbar from './Toolbar';
 import Sidebar from './Sidebar';
 import ExportModal from './ExportModal';
+import VideoOverlay from './VideoOverlay';
+import RecordingControls from './RecordingControls';
+import ZoomControls from './ZoomControls';
+import TemplateLibrary from './TemplateLibrary';
 import { LogOut, Download, Users, PanelRight, Wifi, WifiOff, Copy, Check } from 'lucide-react';
 
 export default function WhiteboardApp({ session, user, onLeave }) {
@@ -12,13 +16,14 @@ export default function WhiteboardApp({ session, user, onLeave }) {
   const [color, setColor] = useState('#ffffff');
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [elements, setElements] = useState(() => {
-    try { return JSON.parse(session.elementsJson || '[]'); } catch { return []; }
+    return session.elements || [];
   });
   const [remoteUsers, setRemoteUsers] = useState({});
   const [messages, setMessages] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarTab, setSidebarTab] = useState('chat');
   const [showExport, setShowExport] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [connected, setConnected] = useState(false);
   const [copied, setCopied] = useState(false);
   const canvasRef = useRef(null);
@@ -59,6 +64,21 @@ export default function WhiteboardApp({ session, user, onLeave }) {
       case 'USER_LEAVE':
         setRemoteUsers(prev => { const n = { ...prev }; delete n[event.userId]; return n; });
         break;
+      case 'HAND_RAISE':
+        if (event.userId !== user.id) {
+          setRemoteUsers(prev => ({
+            ...prev,
+            [event.userId]: { ...prev[event.userId], handRaised: true }
+          }));
+          // Auto-lower hand after 5 seconds
+          setTimeout(() => {
+            setRemoteUsers(prev => {
+              if (!prev[event.userId]) return prev;
+              return { ...prev, [event.userId]: { ...prev[event.userId], handRaised: false } };
+            });
+          }, 5000);
+        }
+        break;
       default: break;
     }
   };
@@ -67,9 +87,19 @@ export default function WhiteboardApp({ session, user, onLeave }) {
     setMessages(prev => [...prev, msg]);
   };
 
-  const { sendDraw, sendCursor, sendChat, sendJoin, sendLeave } = useWebSocket({
+  const [incomingSignals, setIncomingSignals] = useState(null);
+
+  const handleBoardEventWithWebRTC = (event) => {
+    if (event.type === 'WEBRTC_SIGNAL') {
+      setIncomingSignals(event);
+      return;
+    }
+    handleBoardEvent(event);
+  };
+
+  const { sendDraw, sendCursor, sendChat, sendJoin, sendLeave, sendHandRaise, sendWebrtcSignal } = useWebSocket({
     sessionId: session.id,
-    onBoardEvent: handleBoardEvent,
+    onBoardEvent: handleBoardEventWithWebRTC,
     onChatEvent: handleChatEvent,
   });
 
@@ -82,18 +112,21 @@ export default function WhiteboardApp({ session, user, onLeave }) {
     return () => clearTimeout(timer);
   }, []);
 
-  // Auto-save elements every 10s
-  useEffect(() => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      sessionAPI.updateElements(session.id, JSON.stringify(elements)).catch(() => {});
-    }, 10000);
-    return () => clearTimeout(saveTimerRef.current);
-  }, [elements]);
+
 
   const handleAddElement = (el) => {
     setElements(prev => [...prev, el]);
     sendDraw({ type: 'ELEMENT_ADD', sessionId: session.id, userId: user.id, userName: user.name, userColor: user.color, element: el });
+  };
+
+  const handleUpdateElement = (el) => {
+    setElements(prev => prev.map(e => e.id === el.id ? el : e));
+    sendDraw({ type: 'ELEMENT_UPDATE', sessionId: session.id, userId: user.id, userName: user.name, userColor: user.color, element: el });
+  };
+
+  const handleDeleteElement = (elId) => {
+    setElements(prev => prev.filter(e => e.id !== elId));
+    sendDraw({ type: 'ELEMENT_DELETE', sessionId: session.id, userId: user.id, userName: user.name, userColor: user.color, element: { id: elId } });
   };
 
   const handleClear = () => {
@@ -111,8 +144,11 @@ export default function WhiteboardApp({ session, user, onLeave }) {
 
   const handleLeave = () => {
     sendLeave({ type: 'USER_LEAVE', sessionId: session.id, userId: user.id, userName: user.name, userColor: user.color });
-    sessionAPI.updateElements(session.id, JSON.stringify(elements)).catch(() => {});
     onLeave();
+  };
+
+  const handleHandRaiseClick = () => {
+    sendHandRaise({ type: 'HAND_RAISE', sessionId: session.id, userId: user.id, userName: user.name });
   };
 
   const copySessionId = () => {
@@ -147,6 +183,9 @@ export default function WhiteboardApp({ session, user, onLeave }) {
             <span className="conn-dot" />
             {connected ? 'Live' : 'Connecting…'}
           </div>
+          <button className="btn btn-secondary btn-sm" onClick={handleHandRaiseClick} title="Raise Hand">
+            ✋
+          </button>
           <button className="btn btn-secondary btn-sm" onClick={() => setShowExport(true)}>
             <Download size={14}/> Export
           </button>
@@ -161,6 +200,14 @@ export default function WhiteboardApp({ session, user, onLeave }) {
 
       {/* Body */}
       <div className="whiteboard-body">
+        <RecordingControls canvasRef={{ current: canvasRef.current?.getCanvas() }} />
+        <VideoOverlay 
+          isHost={user.id === session.createdBy} 
+          currentUserId={user.id} 
+          remoteUsers={remoteUsers} 
+          sendWebrtcSignal={sendWebrtcSignal} 
+          incomingSignals={incomingSignals} 
+        />
         <div className="canvas-container">
           <div className="canvas-grid canvas-layer" style={{ pointerEvents:'none' }} />
           <WhiteboardCanvas
@@ -172,14 +219,21 @@ export default function WhiteboardApp({ session, user, onLeave }) {
             user={user}
             remoteUsers={remoteUsers}
             onAddElement={handleAddElement}
+            onUpdateElement={handleUpdateElement}
+            onDeleteElement={handleDeleteElement}
             onCursorMove={handleCursorMove}
             onClear={handleClear}
           />
+          <ZoomControls canvasRef={canvasRef} />
           <Toolbar
             tool={tool} setTool={setTool}
             color={color} setColor={setColor}
             strokeWidth={strokeWidth} setStrokeWidth={setStrokeWidth}
             onClear={handleClear}
+            sendHandRaise={sendHandRaise}
+            sessionId={session.id}
+            user={user}
+            onOpenTemplates={() => setShowTemplates(true)}
           />
         </div>
 
@@ -191,6 +245,7 @@ export default function WhiteboardApp({ session, user, onLeave }) {
           users={allUsers}
           currentUserId={user.id}
           onSendChat={handleSendChat}
+          raisedHands={Object.entries(remoteUsers).filter(([_, u]) => u.handRaised).map(([id]) => id)}
         />
       </div>
 
@@ -200,6 +255,13 @@ export default function WhiteboardApp({ session, user, onLeave }) {
           sessionName={session.name}
           elements={elements}
           onClose={() => setShowExport(false)}
+        />
+      )}
+      {showTemplates && (
+        <TemplateLibrary
+          onClose={() => setShowTemplates(false)}
+          onAddElement={handleAddElement}
+          userId={user.id}
         />
       )}
     </div>

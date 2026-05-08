@@ -10,20 +10,20 @@ import java.util.Date;
 @Component
 public class JwtUtil {
 
-    private final String SECRET = "mysecretkeymysecretkeymysecretkey12345";
-
+    // In production, move this to application.properties
+    private final String SECRET = "mysecretkeymysecretkeymysecretkey1234567890";
     private final Key key = Keys.hmacShaKeyFor(SECRET.getBytes());
 
-    public String generateToken(String userId) {
+    public String generateToken(String email) {
         return Jwts.builder()
-                .setSubject(userId)
+                .setSubject(email)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10)) // 10 hrs
+                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10)) // 10 hours
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 
-    public String extractUserId(String token) {
+    public String extractEmail(String token) {
         return getClaims(token).getSubject();
     }
 
@@ -31,7 +31,7 @@ public class JwtUtil {
         try {
             getClaims(token);
             return true;
-        } catch (JwtException e) {
+        } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
     }

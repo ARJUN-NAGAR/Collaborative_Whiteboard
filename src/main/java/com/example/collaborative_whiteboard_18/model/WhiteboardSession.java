@@ -6,6 +6,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Document(collection = "sessions")
 @Data
@@ -31,5 +32,5 @@ public class WhiteboardSession {
 
     private List<Participant> participants;
 
-    private String elementsJson;  // persisted canvas state (JSON string from frontend)
+    private List<Map<String, Object>> elements;  // persisted canvas state (delta-sync)
 }
