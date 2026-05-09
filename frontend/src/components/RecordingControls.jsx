@@ -8,58 +8,40 @@ export default function RecordingControls({ canvasRef }) {
   const chunksRef = useRef([]);
 
   const startRecording = () => {
-    if (!canvasRef.current) return;
-    
-    // Capture the canvas stream at 30 fps
-    const canvasStream = canvasRef.current.captureStream(30);
-    
-    // Try to get audio as well
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(audioStream => {
-      // Combine video and audio tracks
-      const tracks = [...canvasStream.getTracks(), ...audioStream.getTracks()];
-      const combinedStream = new MediaStream(tracks);
-      
+    const canvas = typeof canvasRef?.current === 'function'
+      ? canvasRef.current()
+      : canvasRef?.current;
+    if (!canvas) return;
+
+    const canvasStream = canvas.captureStream(30);
+
+    const startWithStream = (stream) => {
       const options = { mimeType: 'video/webm; codecs=vp9' };
-      mediaRecorderRef.current = new MediaRecorder(combinedStream, options);
-      
+      try {
+        mediaRecorderRef.current = new MediaRecorder(stream, options);
+      } catch {
+        mediaRecorderRef.current = new MediaRecorder(stream);
+      }
+
       mediaRecorderRef.current.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
-      
       mediaRecorderRef.current.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        setRecordedURL(url);
+        setRecordedURL(URL.createObjectURL(blob));
         chunksRef.current = [];
-        
-        // Stop audio tracks
-        audioStream.getTracks().forEach(track => track.stop());
       };
-      
       mediaRecorderRef.current.start();
       setIsRecording(true);
       setRecordedURL(null);
-    }).catch(err => {
-      console.error("Could not get audio, recording canvas only", err);
-      // Fallback: Record video only
-      const options = { mimeType: 'video/webm; codecs=vp9' };
-      mediaRecorderRef.current = new MediaRecorder(canvasStream, options);
-      
-      mediaRecorderRef.current.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      
-      mediaRecorderRef.current.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        setRecordedURL(url);
-        chunksRef.current = [];
-      };
-      
-      mediaRecorderRef.current.start();
-      setIsRecording(true);
-      setRecordedURL(null);
-    });
+    };
+
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(audioStream => {
+        const combined = new MediaStream([...canvasStream.getTracks(), ...audioStream.getTracks()]);
+        startWithStream(combined);
+      })
+      .catch(() => startWithStream(canvasStream));
   };
 
   const stopRecording = () => {
@@ -70,21 +52,64 @@ export default function RecordingControls({ canvasRef }) {
   };
 
   return (
-    <div style={{ position: 'absolute', top: '20px', left: '200px', zIndex: 150, display: 'flex', gap: '10px', alignItems: 'center' }}>
+    <div style={{
+      position: 'absolute',
+      top: 12,
+      right: 12,
+      zIndex: 150,
+      display: 'flex',
+      gap: 6,
+      alignItems: 'center',
+    }}>
       {!isRecording ? (
-        <button onClick={startRecording} className="btn btn-danger btn-sm" style={{ backdropFilter: 'blur(10px)', borderRadius: '100px' }}>
-          <Play size={14} /> Record Board
+        <button
+          onClick={startRecording}
+          className="btn btn-sm"
+          style={{
+            background: 'rgba(14,14,26,0.75)',
+            border: '1px solid rgba(239,68,68,0.4)',
+            color: '#f87171',
+            borderRadius: 100,
+            backdropFilter: 'blur(12px)',
+            gap: 5,
+          }}
+          title="Start recording the board"
+        >
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+          Record
         </button>
       ) : (
-        <button onClick={stopRecording} className="btn btn-secondary btn-sm" style={{ backdropFilter: 'blur(10px)', borderRadius: '100px', border: '1px solid #ef4444', color: '#ef4444' }}>
-          <Square size={14} fill="currentColor" /> Stop
-          <span style={{ marginLeft: '6px', width: '8px', height: '8px', background: '#ef4444', borderRadius: '50%', animation: 'pulse 1.5s infinite' }}></span>
+        <button
+          onClick={stopRecording}
+          className="btn btn-sm"
+          style={{
+            background: 'rgba(239,68,68,0.15)',
+            border: '1px solid rgba(239,68,68,0.5)',
+            color: '#f87171',
+            borderRadius: 100,
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          <Square size={12} fill="#ef4444" />
+          <span style={{ animation: 'pulse 1.5s infinite' }}>Recording…</span>
         </button>
       )}
 
       {recordedURL && !isRecording && (
-        <a href={recordedURL} download="collab-board-recording.webm" className="btn btn-cyan btn-sm" style={{ borderRadius: '100px' }}>
-          <Download size={14} /> Download
+        <a
+          href={recordedURL}
+          download="board-recording.webm"
+          className="btn btn-sm"
+          style={{
+            background: 'rgba(6,182,212,0.15)',
+            border: '1px solid rgba(6,182,212,0.4)',
+            color: '#06b6d4',
+            borderRadius: 100,
+            backdropFilter: 'blur(12px)',
+            textDecoration: 'none',
+          }}
+        >
+          <Download size={12} /> Save
         </a>
       )}
     </div>

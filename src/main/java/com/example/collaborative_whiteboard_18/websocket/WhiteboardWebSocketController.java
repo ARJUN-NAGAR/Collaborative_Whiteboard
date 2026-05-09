@@ -11,6 +11,8 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 
 @Controller
 @RequiredArgsConstructor
@@ -22,139 +24,104 @@ public class WhiteboardWebSocketController {
     private final com.example.collaborative_whiteboard_18.service.SessionService sessionService;
 
     /**
-     * 🎨 Drawing events (ELEMENT_ADD, ELEMENT_DELETE, CLEAR)
-     *
+     * Drawing events: ELEMENT_ADD, ELEMENT_UPDATE, ELEMENT_DELETE, CLEAR, ELEMENTS_SYNC
      * Frontend sends to:   /app/draw
-     * Frontend listens on: /topic/board/{sessionId}   ← BUG FIX: was /topic/session/
+     * Frontend listens on: /topic/board/{sessionId}
      */
     @MessageMapping("/draw")
     public void handleDrawing(@Payload WebSocketMessage message) {
+        String type = message.getType();
 
-        // Persist non-cursor and non-webrtc events
-        if (message.getType() != null && 
-            !message.getType().equals("CURSOR_MOVE") && 
-            !message.getType().equals("WEBRTC_SIGNAL")) {
+        if (type != null && !type.equals("CURSOR_MOVE") && !type.equals("WEBRTC_SIGNAL")) {
             DrawingEvent event = DrawingEvent.builder()
                     .sessionId(message.getSessionId())
                     .userId(message.getUserId())
-                    .type(message.getType())
+                    .type(type)
                     .data(message.getData())
                     .timestamp(LocalDateTime.now())
                     .build();
             drawingService.saveEvent(event);
 
-            // Delta-Sync element persistence
-            if (message.getType().equals("ELEMENT_ADD") || message.getType().equals("ELEMENT_UPDATE")) {
-                if (message.getAdditionalProperties().containsKey("element")) {
-                    java.util.Map<String, Object> element = (java.util.Map<String, Object>) message.getAdditionalProperties().get("element");
+            if (type.equals("ELEMENT_ADD") || type.equals("ELEMENT_UPDATE")) {
+                Object elementObj = message.getAdditionalProperties().get("element");
+                if (elementObj instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> element = (Map<String, Object>) elementObj;
                     sessionService.upsertElement(message.getSessionId(), element);
                 }
-            } else if (message.getType().equals("CLEAR")) {
+            } else if (type.equals("CLEAR")) {
                 sessionService.updateElements(message.getSessionId(), new java.util.ArrayList<>());
+            } else if (type.equals("ELEMENTS_SYNC")) {
+                // Undo/Redo full-state sync — overwrite persisted elements
+                Object elementsObj = message.getAdditionalProperties().get("elements");
+                if (elementsObj instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> elements = (List<Map<String, Object>>) elementsObj;
+                    sessionService.updateElements(message.getSessionId(), elements);
+                }
             }
         }
 
-        // BUG FIX: broadcast to /topic/board/{sessionId} (frontend subscribes here)
-        messagingTemplate.convertAndSend(
-                "/topic/board/" + message.getSessionId(),
-                message
-        );
+        messagingTemplate.convertAndSend("/topic/board/" + message.getSessionId(), message);
     }
 
-    /**
-     * ✋ Hand Raise Event
-     *
-     * Frontend sends to:
-     * /app/handraise
-     *
-     * Frontend listens on:
-     * /topic/board/{sessionId}
-     */
+    /** Hand raise */
     @MessageMapping("/handraise")
     public void handleHandRaise(@Payload WebSocketMessage message) {
-
-        messagingTemplate.convertAndSend(
-                "/topic/board/" + message.getSessionId(),
-                message
-        );
+        messagingTemplate.convertAndSend("/topic/board/" + message.getSessionId(), message);
     }
 
-    /**
-     * 🖱️ Cursor position events
-     *
-     * Frontend sends to:   /app/cursor
-     * Frontend listens on: /topic/board/{sessionId}
-     * BUG FIX: this handler was completely missing — cursor updates were never broadcast
-     */
+    /** Cursor — real-time only, not persisted */
     @MessageMapping("/cursor")
     public void handleCursor(@Payload WebSocketMessage message) {
-        // Not persisted — real-time only
-        messagingTemplate.convertAndSend(
-                "/topic/board/" + message.getSessionId(),
-                message
-        );
+        messagingTemplate.convertAndSend("/topic/board/" + message.getSessionId(), message);
     }
 
-    /**
-     * 👤 User join event
-     *
-     * Frontend sends to:   /app/join
-     * Frontend listens on: /topic/board/{sessionId}
-     * BUG FIX: this handler was completely missing
-     */
+    /** User join */
     @MessageMapping("/join")
     public void handleJoin(@Payload WebSocketMessage message) {
-        messagingTemplate.convertAndSend(
-                "/topic/board/" + message.getSessionId(),
-                message
-        );
+        messagingTemplate.convertAndSend("/topic/board/" + message.getSessionId(), message);
     }
 
-    /**
-     * 🚪 User leave event
-     *
-     * Frontend sends to:   /app/leave
-     * Frontend listens on: /topic/board/{sessionId}
-     * BUG FIX: this handler was completely missing
-     */
+    /** User leave */
     @MessageMapping("/leave")
     public void handleLeave(@Payload WebSocketMessage message) {
-        messagingTemplate.convertAndSend(
-                "/topic/board/" + message.getSessionId(),
-                message
-        );
+        messagingTemplate.convertAndSend("/topic/board/" + message.getSessionId(), message);
     }
 
     /**
-     * 💬 Chat messages
-     *
+     * Chat messages
      * Frontend sends to:   /app/chat
-     * Frontend listens on: /topic/chat/{sessionId}   ← BUG FIX: was /topic/session/
+     * Frontend listens on: /topic/chat/{sessionId}
      */
     @MessageMapping("/chat")
     public void handleChat(@Payload WebSocketMessage message) {
+        String content = null;
+        String senderName = null;
+        String senderColor = null;
 
-        // BUG FIX: field mapping updated to match new ChatMessage model
-        // (senderId/senderName/senderColor/content instead of userId/message)
-        String content = message.getData() != null
-                ? (String) message.getData().get("content")
-                : null;
+        // Data payload takes priority; fall back to top-level fields via @JsonAnyGetter
+        if (message.getData() != null) {
+            content = (String) message.getData().get("content");
+            senderName = (String) message.getData().get("senderName");
+            senderColor = (String) message.getData().get("senderColor");
+        }
+        if (content == null) content = (String) message.getAdditionalProperties().get("content");
+        if (senderName == null) senderName = (String) message.getAdditionalProperties().get("senderName");
+        if (senderColor == null) senderColor = (String) message.getAdditionalProperties().get("senderColor");
 
         ChatMessage chat = ChatMessage.builder()
                 .sessionId(message.getSessionId())
                 .senderId(message.getUserId())
-                .senderName((String) (message.getData() != null ? message.getData().get("senderName") : null))
-                .senderColor((String) (message.getData() != null ? message.getData().get("senderColor") : null))
+                .senderName(senderName)
+                .senderColor(senderColor)
                 .content(content)
                 .timestamp(LocalDateTime.now())
                 .build();
 
-        chatService.sendMessage(chat);
+        ChatMessage saved = chatService.sendMessage(chat);
 
-        // BUG FIX: broadcast to /topic/chat/{sessionId}
-        messagingTemplate.convertAndSend(
-                "/topic/chat/" + message.getSessionId(),
-                message
-        );
+        // Re-broadcast the fully-hydrated saved message so clients get the real id + senderName
+        messagingTemplate.convertAndSend("/topic/chat/" + message.getSessionId(), saved);
     }
 }
