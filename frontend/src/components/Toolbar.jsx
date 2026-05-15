@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Pencil, Eraser, Square, Circle, Minus, MoveRight,
-  Type, StickyNote, Trash2, Hand, MousePointer2, Move,
-  LayoutTemplate, Undo2, Redo2, BringToFront, SendToBack
+  Type, StickyNote, MousePointer2, Move
 } from 'lucide-react';
+import { useTool } from '../contexts/ToolContext';
 
 const COLORS = [
   '#ffffff','#f87171','#fb923c','#fbbf24','#34d399',
@@ -24,28 +24,11 @@ const TOOLS = [
   { id: 'sticky', icon: StickyNote, label: 'Sticky Note (S)' },
 ];
 
-export default function Toolbar({
-  tool, setTool,
-  color, setColor,
-  strokeWidth, setStrokeWidth,
-  onClear,
-  sendHandRaise, sessionId, user,
-  onOpenTemplates,
-  canUndo, canRedo, onUndo, onRedo,
-}) {
+export default function Toolbar() {
+  const { activeTool, setActiveTool, strokeColor, setStrokeColor, strokeWidth, setStrokeWidth } = useTool();
+  
   const [showColors, setShowColors] = useState(false);
   const paletteRef = useRef(null);
-
-  useEffect(() => {
-    const keys = { v:'select', ' ':'pan', p:'pen', e:'eraser', r:'rect', c:'circle', l:'line', a:'arrow', t:'text', s:'sticky' };
-    const handler = (ev) => {
-      if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA') return;
-      const t = keys[ev.key.toLowerCase()];
-      if (t) setTool(t);
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [setTool]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -55,118 +38,56 @@ export default function Toolbar({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const handleRaiseHand = () => {
-    if (!sendHandRaise || !sessionId || !user) return;
-    sendHandRaise({ sessionId, userId: user.id, data: { userName: user.name } });
-  };
-
   return (
     <div className="toolbar">
-      {/* Undo / Redo */}
-      <button
-        className="tool-btn"
-        onClick={onUndo}
-        disabled={!canUndo}
-        title="Undo (Ctrl+Z)"
-        style={{ opacity: canUndo ? 1 : 0.35 }}
-      >
-        <Undo2 size={17} />
-        <span className="tooltip">Undo (Ctrl+Z)</span>
-      </button>
-      <button
-        className="tool-btn"
-        onClick={onRedo}
-        disabled={!canRedo}
-        title="Redo (Ctrl+Y)"
-        style={{ opacity: canRedo ? 1 : 0.35 }}
-      >
-        <Redo2 size={17} />
-        <span className="tooltip">Redo (Ctrl+Y)</span>
-      </button>
-
-      <div className="toolbar-divider" />
-
       {/* Drawing tools */}
       {TOOLS.map(({ id, icon: Icon, label }) => (
         <button
           key={id}
-          className={`tool-btn ${tool === id ? 'active' : ''}`}
-          onClick={() => setTool(tool === id ? 'select' : id)}
+          className={`tool-btn ${activeTool === id ? 'active' : ''}`}
+          onClick={() => setActiveTool(id)}
           title={label}
         >
           <Icon size={18} />
-          <span className="tooltip">{label}</span>
+          <span className="tip">{label}</span>
         </button>
       ))}
 
-      <div className="toolbar-divider" />
+      <div className="toolbar-divider" style={{ width: '24px', height: '1px', background: 'var(--border-subtle)', margin: '4px auto' }} />
 
       {/* Color picker */}
       <div ref={paletteRef} style={{ position: 'relative' }}>
         <button
           className="color-picker-btn"
-          style={{ background: color }}
+          style={{ background: strokeColor, width: 28, height: 28, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.2)', cursor: 'pointer', margin: '4px auto', display: 'block' }}
           onClick={() => setShowColors(s => !s)}
           title="Color"
         />
         {showColors && (
-          <div className="color-palette">
+          <div className="color-palette" style={{ position: 'absolute', left: '100%', top: 0, marginLeft: 10, background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', padding: 10, borderRadius: 10, width: 160, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4, zIndex: 300, boxShadow: 'var(--shadow-lg)' }}>
             {COLORS.map(c => (
               <div
                 key={c}
-                className={`color-swatch ${color === c ? 'selected' : ''}`}
-                style={{ background: c, border: c === '#ffffff' ? '1px solid rgba(255,255,255,0.2)' : undefined }}
-                onClick={() => { setColor(c); setShowColors(false); }}
+                className={`color-swatch ${strokeColor === c ? 'selected' : ''}`}
+                style={{ background: c, width: 24, height: 24, borderRadius: 4, cursor: 'pointer', border: c === '#ffffff' ? '1px solid rgba(255,255,255,0.2)' : '1px solid transparent', transform: strokeColor === c ? 'scale(1.1)' : 'none', boxShadow: strokeColor === c ? '0 0 0 2px var(--accent)' : 'none' }}
+                onClick={() => { setStrokeColor(c); setShowColors(false); }}
               />
             ))}
-            <input
-              type="color"
-              value={color}
-              onChange={e => setColor(e.target.value)}
-              style={{ gridColumn: 'span 7', width: '100%', height: 28, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 4 }}
-              title="Custom color"
-            />
           </div>
         )}
       </div>
 
       {/* Stroke width */}
-      <div className="stroke-slider-wrap">
-        <svg width="12" height="12" viewBox="0 0 12 12">
-          <circle cx="6" cy="6" r="2" fill="currentColor" opacity="0.5" />
-        </svg>
+      <div className="stroke-slider-wrap" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginTop: 10 }}>
         <input
           type="range"
-          className="stroke-slider"
           min="1" max="24"
           value={strokeWidth}
           onChange={e => setStrokeWidth(+e.target.value)}
           title={`Stroke: ${strokeWidth}px`}
+          style={{ width: 100, transform: 'rotate(-90deg)', margin: '40px 0' }}
         />
-        <svg width="14" height="14" viewBox="0 0 14 14">
-          <circle cx="7" cy="7" r="4" fill="currentColor" />
-        </svg>
       </div>
-
-      <div className="toolbar-divider" />
-
-      {/* Raise Hand */}
-      <button className="tool-btn" onClick={handleRaiseHand} title="Raise Hand">
-        <Hand size={17} />
-        <span className="tooltip">Raise Hand</span>
-      </button>
-
-      {/* Templates */}
-      <button className="tool-btn" onClick={onOpenTemplates} title="Templates">
-        <LayoutTemplate size={17} />
-        <span className="tooltip">Templates</span>
-      </button>
-
-      {/* Clear */}
-      <button className="tool-btn" onClick={onClear} title="Clear Board">
-        <Trash2 size={17} />
-        <span className="tooltip">Clear Board</span>
-      </button>
     </div>
   );
 }

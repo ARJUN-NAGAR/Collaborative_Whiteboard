@@ -120,14 +120,14 @@ function MainApp() {
       />
       <Route 
         path="/board/:id" 
-        element={<BoardRoute loggedInUser={loggedInUser} />} 
+        element={<BoardRoute loggedInUser={loggedInUser} setLoggedInUser={setLoggedInUser} />} 
       />
     </Routes>
   );
 }
 
 // Wrapper for WhiteboardApp to extract ID and Session
-function BoardRoute({ loggedInUser }) {
+function BoardRoute({ loggedInUser, setLoggedInUser }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams();
@@ -135,9 +135,8 @@ function BoardRoute({ loggedInUser }) {
 
   useEffect(() => {
     if (!sessionData && loggedInUser) {
-      sessionAPI.getAll()
-        .then(sessions => {
-          const s = sessions.find(s => s.id === id);
+      sessionAPI.getById(id)
+        .then(s => {
           if (s) setSessionData(s);
           else navigate('/');
         })
@@ -146,7 +145,7 @@ function BoardRoute({ loggedInUser }) {
   }, [id, sessionData, loggedInUser, navigate]);
 
   if (!loggedInUser) {
-    return <LoginPage onAuthSuccess={() => {}} />;
+    return <LoginPage onAuthSuccess={(u) => setLoggedInUser(buildUser(u))} />;
   }
 
   if (!sessionData) return null;

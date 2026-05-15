@@ -3,6 +3,7 @@ package com.example.collaborative_whiteboard_18.service;
 import com.example.collaborative_whiteboard_18.model.Participant;
 import com.example.collaborative_whiteboard_18.model.WhiteboardSession;
 import com.example.collaborative_whiteboard_18.repository.WhiteboardSessionRepository;
+import com.mongodb.BasicDBObject;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -80,6 +81,16 @@ public class SessionService {
             Update pushNew = new Update().push("elements", element);
             mongoTemplate.updateFirst(matchSession, pushNew, WhiteboardSession.class);
         }
+    }
+
+    /** Remove one or more elements by id without replacing the full board state. */
+    public void deleteElements(String sessionId, List<String> elementIds) {
+        if (elementIds == null || elementIds.isEmpty()) return;
+
+        Query matchSession = new Query(Criteria.where("id").is(sessionId));
+        Update pullDeleted = new Update().pull("elements",
+                new BasicDBObject("id", new BasicDBObject("$in", elementIds)));
+        mongoTemplate.updateFirst(matchSession, pullDeleted, WhiteboardSession.class);
     }
 
     // ── Delete ───────────────────────────────────────────────────────────────

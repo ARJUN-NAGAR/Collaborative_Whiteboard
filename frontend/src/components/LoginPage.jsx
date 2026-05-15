@@ -82,27 +82,16 @@ export default function LoginPage({ onAuthSuccess }) {
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-bg" aria-hidden="true">
-        <div className="auth-bg__blob auth-bg__blob--1" />
-        <div className="auth-bg__blob auth-bg__blob--2" />
-      </div>
-
-      <button className="auth-theme-btn" onClick={toggleTheme} title="Toggle theme">
-        {theme === "dark" ? "☀️" : "🌙"}
-      </button>
-
-      <div className="auth-card">
-        <div className="auth-logo">
-          <svg width="36" height="36" viewBox="0 0 32 32" fill="none">
-            <rect width="32" height="32" rx="8" fill="var(--accent)" />
-            <rect x="7" y="7" width="8" height="8" rx="2" fill="white" opacity=".9" />
-            <rect x="17" y="7" width="8" height="8" rx="2" fill="white" opacity=".6" />
-            <rect x="7" y="17" width="8" height="8" rx="2" fill="white" opacity=".6" />
-            <rect x="17" y="17" width="8" height="8" rx="2" fill="white" opacity=".3" />
-          </svg>
-          <span className="auth-logo__name">CollabBoard</span>
-        </div>
+    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg-base)' }}>
+      {/* Left Form Side */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+        <div style={{ width: '100%', maxWidth: '400px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '2rem', cursor: 'pointer' }} onClick={() => navigate('/')}>
+            <div style={{ width: 32, height: 32, background: 'var(--accent)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></svg>
+            </div>
+            <span style={{ fontSize: '1.25rem', fontWeight: 800 }}>Boardly</span>
+          </div>
 
         <h1 className="auth-title">{isRegister ? "Create an account" : "Welcome back"}</h1>
         <p className="auth-subtitle">{isRegister ? "Sign up for your free workspace" : "Sign in to your workspace"}</p>
@@ -208,7 +197,7 @@ export default function LoginPage({ onAuthSuccess }) {
             {errors.password && <span className="auth-field-error">{errors.password}</span>}
           </div>
 
-          <button type="submit" className="btn btn--primary btn--full btn--lg" disabled={loading}>
+          <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '0.8rem', marginTop: '1rem', fontSize: '1rem' }} disabled={loading}>
             {loading ? (
               <><span className="spinner spinner--sm" /> {isRegister ? "Creating account…" : "Signing in…"}</>
             ) : isRegister ? "Create Account" : "Sign in"}
@@ -228,10 +217,31 @@ export default function LoginPage({ onAuthSuccess }) {
 
         <p className="auth-switch">
           {isRegister ? "Already have an account? " : "Don't have an account? "}
-          <a href="#" onClick={toggleMode} className="auth-switch__link">
+          <a href="#" onClick={toggleMode} className="auth-switch__link" style={{ color: 'var(--accent)', fontWeight: 600 }}>
             {isRegister ? "Sign in instead" : "Create one free"}
           </a>
         </p>
+        </div>
+      </div>
+
+      {/* Right Graphic Side */}
+      <div className="hidden-mobile" style={{ flex: 1, background: 'var(--accent-glow)', padding: '2rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(var(--accent-light) 1px, transparent 1px)', backgroundSize: '32px 32px', opacity: 0.1 }} />
+        
+        <div style={{ position: 'relative', background: 'var(--bg-surface)', padding: '3rem', borderRadius: 'var(--r-xl)', boxShadow: 'var(--shadow-lg)', maxWidth: '500px', width: '100%' }}>
+          <h2 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '1rem' }}>Collaboration,<br/>reimagined.</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', lineHeight: 1.6, marginBottom: '2rem' }}>
+            Boardly brings your entire team together on an infinite canvas. Brainstorm, design, and plan without boundaries.
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{ display: 'flex', marginLeft: '0.5rem' }}>
+              {[1,2,3,4].map(i => (
+                <div key={i} style={{ width: 36, height: 36, borderRadius: '50%', background: `hsl(${i*40}, 70%, 60%)`, border: '2px solid var(--bg-surface)', marginLeft: '-12px', zIndex: 5-i }} />
+              ))}
+            </div>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Join 10,000+ teams</span>
+          </div>
+        </div>
       </div>
     </div>
   );

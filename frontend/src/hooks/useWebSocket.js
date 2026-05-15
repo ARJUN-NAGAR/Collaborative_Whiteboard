@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { Client } from '@stomp/stompjs';
+import SockJS from 'sockjs-client';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:8080/ws';
 const TYPING_DEBOUNCE = 1500;
@@ -14,7 +15,7 @@ export function useWebSocket({ sessionId, onBoardEvent, onChatEvent, onConnectio
     if (!sessionId) return;
 
     const client = new Client({
-      webSocketFactory: () => new window.SockJS(WS_URL),
+      webSocketFactory: () => new SockJS(WS_URL),
       reconnectDelay: 4000,
       onConnect: () => {
         setIsConnected(true);
@@ -63,7 +64,7 @@ export function useWebSocket({ sessionId, onBoardEvent, onChatEvent, onConnectio
   const sendChat = useCallback((msg) => {
     send('/app/chat', {
       ...msg,
-      type: 'CHAT',
+      type: 'CHAT_MESSAGE',
       data: { content: msg.content, senderName: msg.senderName, senderColor: msg.senderColor },
     });
   }, [send]);

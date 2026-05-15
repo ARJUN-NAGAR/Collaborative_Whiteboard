@@ -75,7 +75,7 @@ public class WhiteboardWebSocketController {
     // ─── Drawing ─────────────────────────────────────────────────────────────
 
     /**
-     * /app/draw handles: ELEMENT_ADD, ELEMENT_UPDATE, ELEMENT_DELETE,
+     * /app/draw handles: ELEMENT_CREATE, ELEMENT_UPDATE, ELEMENT_DELETE,
      *                    CLEAR, ELEMENTS_SYNC, WEBRTC_SIGNAL,
      *                    TYPING_START, TYPING_STOP
      */
@@ -86,6 +86,9 @@ public class WhiteboardWebSocketController {
         // Passthrough types that skip persistence / RBAC
         boolean skipPersist = type == null
                 || type.equals("CURSOR_MOVE")
+                || type.equals("SELECTION_UPDATE")
+                || type.equals("VIEWPORT_UPDATE")
+                || type.equals("REACTION")
                 || type.equals("WEBRTC_SIGNAL")
                 || type.equals("TYPING_START")
                 || type.equals("TYPING_STOP");
@@ -105,17 +108,33 @@ public class WhiteboardWebSocketController {
                     .build();
             drawingService.saveEvent(event);
 
-            if ("ELEMENT_ADD".equals(type) || "ELEMENT_UPDATE".equals(type)) {
+            if ("ELEMENT_CREATE".equals(type) || "ELEMENT_ADD".equals(type) || "ELEMENT_UPDATE".equals(type)) {
                 Object el = message.getAdditionalProperties().get("element");
+                if (el == null && message.getData() != null) {
+                    el = message.getData().get("element");
+                }
                 if (el instanceof Map) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> element = (Map<String, Object>) el;
                     sessionService.upsertElement(message.getSessionId(), element);
                 }
+            } else if ("ELEMENT_DELETE".equals(type)) {
+                Object ids = message.getAdditionalProperties().get("elementIds");
+                if (ids == null && message.getData() != null) {
+                    ids = message.getData().get("elementIds");
+                }
+                if (ids instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<String> elementIds = (List<String>) ids;
+                    sessionService.deleteElements(message.getSessionId(), elementIds);
+                }
             } else if ("CLEAR".equals(type)) {
                 sessionService.updateElements(message.getSessionId(), new java.util.ArrayList<>());
             } else if ("ELEMENTS_SYNC".equals(type)) {
                 Object els = message.getAdditionalProperties().get("elements");
+                if (els == null && message.getData() != null) {
+                    els = message.getData().get("elements");
+                }
                 if (els instanceof List) {
                     @SuppressWarnings("unchecked")
                     List<Map<String, Object>> elements = (List<Map<String, Object>>) els;

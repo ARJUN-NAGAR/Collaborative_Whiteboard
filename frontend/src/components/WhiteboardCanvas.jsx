@@ -1,150 +1,57 @@
-import { useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback } from 'react';
+import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback } from 'react';
+import { useWhiteboard } from '../contexts/WhiteboardContext';
+import { useTool } from '../contexts/ToolContext';
+import { useCollaboration } from '../contexts/CollaborationContext';
+import { drawElement, drawSelectionBox } from '../engine/renderer';
+import { isHit } from '../engine/hitDetection';
+import EditableTextOverlay from './EditableTextOverlay';
 
-// ─── Drawing Helpers ─────────────────────────────────────────────────────────
-function drawElement(ctx, el) {
-  ctx.save();
-  ctx.strokeStyle = el.color || '#fff';
-  ctx.fillStyle = el.fillColor || 'transparent';
-  ctx.lineWidth = el.strokeWidth || 2;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
+const WhiteboardCanvas = forwardRef(function WhiteboardCanvas(props, ref) {
+  const { 
+    elements, addElement, updateElement, deleteElements,
+    selectedIds, setSelectedIds,
+    saveSnapshot,
+    zoom, panOffset, setPanOffset, setZoom,
+    screenToWorld, worldToScreen
+  } = useWhiteboard();
 
-  if (el.type === 'pen' && el.points?.length > 1) {
-    ctx.beginPath();
-    ctx.moveTo(el.points[0].x, el.points[0].y);
-    for (let i = 1; i < el.points.length - 1; i++) {
-      const mx = (el.points[i].x + el.points[i + 1].x) / 2;
-      const my = (el.points[i].y + el.points[i + 1].y) / 2;
-      ctx.quadraticCurveTo(el.points[i].x, el.points[i].y, mx, my);
-    }
-    ctx.lineTo(el.points[el.points.length - 1].x, el.points[el.points.length - 1].y);
-    ctx.stroke();
-  } else if (el.type === 'rect') {
-    const w = el.x2 - el.x1, h = el.y2 - el.y1;
-    if (el.fillColor && el.fillColor !== 'transparent') {
-      ctx.fillStyle = el.fillColor;
-      ctx.fillRect(el.x1, el.y1, w, h);
-    }
-    ctx.strokeRect(el.x1, el.y1, w, h);
-  } else if (el.type === 'circle') {
-    const cx = (el.x1 + el.x2) / 2, cy = (el.y1 + el.y2) / 2;
-    const rx = Math.abs(el.x2 - el.x1) / 2, ry = Math.abs(el.y2 - el.y1) / 2;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    if (el.fillColor && el.fillColor !== 'transparent') ctx.fill();
-    ctx.stroke();
-  } else if (el.type === 'line') {
-    ctx.beginPath();
-    ctx.moveTo(el.x1, el.y1);
-    ctx.lineTo(el.x2, el.y2);
-    ctx.stroke();
-  } else if (el.type === 'arrow') {
-    const dx = el.x2 - el.x1, dy = el.y2 - el.y1;
-    const angle = Math.atan2(dy, dx);
-    const headLen = 16;
-    ctx.beginPath();
-    ctx.moveTo(el.x1, el.y1);
-    ctx.lineTo(el.x2, el.y2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(el.x2, el.y2);
-    ctx.lineTo(el.x2 - headLen * Math.cos(angle - Math.PI / 6), el.y2 - headLen * Math.sin(angle - Math.PI / 6));
-    ctx.moveTo(el.x2, el.y2);
-    ctx.lineTo(el.x2 - headLen * Math.cos(angle + Math.PI / 6), el.y2 - headLen * Math.sin(angle + Math.PI / 6));
-    ctx.stroke();
-  } else if (el.type === 'text') {
-    ctx.font = `${el.fontSize || 18}px Inter, sans-serif`;
-    ctx.fillStyle = el.color || '#fff';
-    const lines = (el.text || '').split('\n');
-    lines.forEach((line, i) => ctx.fillText(line, el.x, el.y + i * (el.fontSize || 18) * 1.3));
-  } else if (el.type === 'sticky') {
-    ctx.fillStyle = el.bgColor || '#fbbf24';
-    ctx.shadowColor = 'rgba(0,0,0,0.35)';
-    ctx.shadowBlur = 8;
-    ctx.fillRect(el.x, el.y, el.width || 160, el.height || 120);
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#1a1a1a';
-    ctx.font = `13px Inter, sans-serif`;
-    const words = (el.text || '').split(' ');
-    let line = '';
-    let lines2 = [];
-    let maxW = (el.width || 160) - 16;
-    words.forEach((w) => {
-      const test = line + w + ' ';
-      if (ctx.measureText(test).width > maxW && line) {
-        lines2.push(line.trim());
-        line = w + ' ';
-      } else {
-        line = test;
-      }
-    });
-    if (line) lines2.push(line.trim());
-    lines2.forEach((l, i) => ctx.fillText(l, el.x + 8, el.y + 20 + i * 16));
-  }
-  ctx.restore();
-}
+  const { activeTool, strokeColor, fillColor, strokeWidth, fontSize, setActiveTool } = useTool();
+  const {
+    remoteUsers,
+    sendCursor,
+    sendSelection,
+    publishElementCreate,
+    publishElementUpdate,
+    publishElementDelete
+  } = useCollaboration();
 
-function isHit(el, x, y) {
-  const pad = 10;
-  if (el.type === 'rect' || el.type === 'sticky') {
-    const minX = Math.min(el.x1 ?? el.x, el.x2 ?? el.x + (el.width || 160));
-    const maxX = Math.max(el.x1 ?? el.x, el.x2 ?? el.x + (el.width || 160));
-    const minY = Math.min(el.y1 ?? el.y, el.y2 ?? el.y + (el.height || 120));
-    const maxY = Math.max(el.y1 ?? el.y, el.y2 ?? el.y + (el.height || 120));
-    return x >= minX - pad && x <= maxX + pad && y >= minY - pad && y <= maxY + pad;
-  }
-  if (el.type === 'circle') {
-    const cx = (el.x1 + el.x2) / 2, cy = (el.y1 + el.y2) / 2;
-    const rx = Math.abs(el.x2 - el.x1) / 2, ry = Math.abs(el.y2 - el.y1) / 2;
-    return x >= cx - rx - pad && x <= cx + rx + pad && y >= cy - ry - pad && y <= cy + ry + pad;
-  }
-  if (el.type === 'line' || el.type === 'arrow') {
-    const minX = Math.min(el.x1, el.x2), maxX = Math.max(el.x1, el.x2);
-    const minY = Math.min(el.y1, el.y2), maxY = Math.max(el.y1, el.y2);
-    return x >= minX - pad && x <= maxX + pad && y >= minY - pad && y <= maxY + pad;
-  }
-  if (el.type === 'text') {
-    return x >= el.x - pad && x <= el.x + 150 && y >= el.y - 20 && y <= el.y + 40;
-  }
-  if (el.type === 'pen') {
-    return el.points?.some((p) => Math.hypot(p.x - x, p.y - y) < pad + 2);
-  }
-  return false;
-}
-
-// ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
-
-const WhiteboardCanvas = forwardRef(function WhiteboardCanvas({
-  elements, tool, color, strokeWidth, user, remoteUsers,
-  onAddElement, onUpdateElement, onDeleteElement, onCursorMove,
-  onBringToFront, onSendToBack
-}, ref) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const activeCanvasRef = useRef(null);
 
-  const [selectedId, setSelectedId] = useState(null);
-  const [selectedIds, setSelectedIds] = useState(new Set());
-  
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [scale, setScale] = useState(1);
-
+  // Interaction State
   const [isDrawing, setIsDrawing] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  
   const startPan = useRef({ x: 0, y: 0 });
   const currentElement = useRef(null);
+  const lastDraggedElement = useRef(null);
   const dragOffset = useRef({ x: 0, y: 0 });
-  const originalPos = useRef({ x: 0, y: 0 });
+  
+  // Text Overlay State
+  const [editingText, setEditingText] = useState(null);
 
   useImperativeHandle(ref, () => ({
     getCanvas: () => canvasRef.current,
-    zoomIn: () => setScale(s => Math.min(s * 1.2, 5)),
-    zoomOut: () => setScale(s => Math.max(s / 1.2, 0.1)),
-    resetZoom: () => { setScale(1); setPan({ x: 0, y: 0 }); }
+    zoomIn: () => setZoom(s => Math.min(s * 1.2, 5)),
+    zoomOut: () => setZoom(s => Math.max(s / 1.2, 0.1)),
+    resetZoom: () => { setZoom(1); setPanOffset({ x: 0, y: 0 }); }
   }));
 
-  // Render Loop
+  const lastCursorSend = useRef(0);
+
+  // Render Loop using requestAnimationFrame
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -160,74 +67,122 @@ const WhiteboardCanvas = forwardRef(function WhiteboardCanvas({
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
       ctx.save();
-      ctx.translate(pan.x, pan.y);
-      ctx.scale(scale, scale);
+      // Apply Camera Transform
+      ctx.translate(panOffset.x, panOffset.y);
+      ctx.scale(zoom, zoom);
       
-      elements.forEach(el => {
-        // Render all elements
+      // Sort elements by zIndex safely before rendering
+      const sortedElements = [...elements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+      
+      sortedElements.forEach(el => {
+        // Render
         drawElement(ctx, el);
         
         // Highlight selection
-        if (selectedId === el.id || selectedIds.has(el.id)) {
-          ctx.strokeStyle = 'var(--accent, #7c5cfc)';
-          ctx.lineWidth = 1 / scale;
-          ctx.setLineDash([5 / scale, 5 / scale]);
-          
-          let minX, minY, maxX, maxY;
-          if (el.type === 'rect' || el.type === 'circle' || el.type === 'line' || el.type === 'arrow') {
-            minX = Math.min(el.x1, el.x2); maxX = Math.max(el.x1, el.x2);
-            minY = Math.min(el.y1, el.y2); maxY = Math.max(el.y1, el.y2);
-          } else if (el.type === 'sticky') {
-            minX = el.x; maxX = el.x + (el.width || 160);
-            minY = el.y; maxY = el.y + (el.height || 120);
-          } else if (el.type === 'text') {
-            minX = el.x; maxX = el.x + 100;
-            minY = el.y - 20; maxY = el.y + 20;
-          } else if (el.type === 'pen' && el.points?.length) {
-            minX = Math.min(...el.points.map(p => p.x)); maxX = Math.max(...el.points.map(p => p.x));
-            minY = Math.min(...el.points.map(p => p.y)); maxY = Math.max(...el.points.map(p => p.y));
-          }
-          
-          if (minX !== undefined) {
-            ctx.strokeRect(minX - 4, minY - 4, maxX - minX + 8, maxY - minY + 8);
-          }
-          ctx.setLineDash([]);
+        if (selectedIds.has(el.id)) {
+          drawSelectionBox(ctx, el, zoom);
         }
+
+        Object.values(remoteUsers).forEach((remote) => {
+          if (remote.selectedElementIds?.includes(el.id)) {
+            drawSelectionBox(ctx, el, zoom, remote.color || '#06b6d4');
+          }
+        });
       });
+      
       ctx.restore();
       animationFrameId = requestAnimationFrame(render);
     };
     render();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [elements, pan, scale, selectedId, selectedIds]);
+  }, [elements, panOffset, zoom, selectedIds, remoteUsers]);
 
-  const getPointerPos = (e) => ({
-    x: (e.clientX - pan.x) / scale,
-    y: (e.clientY - pan.y) / scale
-  });
+  useEffect(() => {
+    sendSelection(Array.from(selectedIds));
+  }, [selectedIds, sendSelection]);
+
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.isContentEditable) return;
+
+      if ((event.key === 'Delete' || event.key === 'Backspace') && selectedIds.size) {
+        event.preventDefault();
+        const ids = Array.from(selectedIds);
+        deleteElements(ids);
+        publishElementDelete(ids);
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd' && selectedIds.size) {
+        event.preventDefault();
+        saveSnapshot();
+        const nextZ = elements.length ? Math.max(...elements.map(el => el.zIndex || 0)) + 1 : 1;
+        const clones = elements
+          .filter(el => selectedIds.has(el.id))
+          .map((el, index) => {
+            const clone = { ...el, id: crypto.randomUUID(), zIndex: nextZ + index };
+            if (clone.x !== undefined) clone.x += 24;
+            if (clone.y !== undefined) clone.y += 24;
+            if (clone.x1 !== undefined) { clone.x1 += 24; clone.x2 += 24; }
+            if (clone.y1 !== undefined) { clone.y1 += 24; clone.y2 += 24; }
+            if (clone.points) clone.points = clone.points.map(point => ({ x: point.x + 24, y: point.y + 24 }));
+            return clone;
+          });
+
+        clones.forEach(clone => {
+          addElement(clone);
+          publishElementCreate(clone);
+        });
+        setSelectedIds(new Set(clones.map(clone => clone.id)));
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [addElement, deleteElements, elements, publishElementCreate, publishElementDelete, saveSnapshot, selectedIds, setSelectedIds]);
 
   const handlePointerDown = (e) => {
+    if (editingText) return; // Ignore if currently editing text
+
     // Middle click or Pan tool
-    if (e.button === 1 || tool === 'pan') {
+    if (e.button === 1 || activeTool === 'pan') {
       setIsPanning(true);
-      startPan.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+      startPan.current = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
       return;
     }
-    
-    const pos = getPointerPos(e);
-    
-    if (tool === 'select') {
+
+    const pos = screenToWorld(e.clientX, e.clientY);
+
+    if (activeTool === 'eraser') {
+      const sorted = [...elements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        if (isHit(sorted[i], pos.x, pos.y)) {
+          deleteElements([sorted[i].id]);
+          publishElementDelete([sorted[i].id]);
+          return;
+        }
+      }
+      return;
+    }
+
+    if (activeTool === 'select') {
+      // Hit detection (highest zIndex first)
       let hit = null;
-      for (let i = elements.length - 1; i >= 0; i--) {
-         if (isHit(elements[i], pos.x, pos.y)) { hit = elements[i]; break; }
+      const sorted = [...elements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+      for (let i = sorted.length - 1; i >= 0; i--) {
+         if (isHit(sorted[i], pos.x, pos.y)) { hit = sorted[i]; break; }
       }
       if (hit) {
-         setSelectedId(hit.id);
+         setSelectedIds(prev => {
+           if (!e.shiftKey) return new Set([hit.id]);
+           const next = new Set(prev);
+           if (next.has(hit.id)) next.delete(hit.id);
+           else next.add(hit.id);
+           return next;
+         });
          setIsDragging(true);
+         saveSnapshot();
          dragOffset.current = { x: pos.x - (hit.x ?? hit.x1 ?? 0), y: pos.y - (hit.y ?? hit.y1 ?? 0) };
-         originalPos.current = { x1: hit.x1, y1: hit.y1, x2: hit.x2, y2: hit.y2, x: hit.x, y: hit.y };
       } else {
-         setSelectedId(null);
          setSelectedIds(new Set());
       }
       return;
@@ -235,32 +190,58 @@ const WhiteboardCanvas = forwardRef(function WhiteboardCanvas({
     
     // Start drawing
     setIsDrawing(true);
-    setSelectedId(null);
     setSelectedIds(new Set());
     
+    const baseZIndex = elements.length > 0 ? Math.max(...elements.map(e => e.zIndex || 0)) + 1 : 1;
+
     currentElement.current = {
       id: crypto.randomUUID(),
-      type: tool,
-      color,
+      type: activeTool,
+      strokeColor,
+      fillColor,
       strokeWidth,
+      fontSize,
+      zIndex: baseZIndex,
       x1: pos.x, y1: pos.y,
       x2: pos.x, y2: pos.y,
-      x: pos.x, y: pos.y, // For sticky/text
+      x: pos.x, y: pos.y,
       points: [{ x: pos.x, y: pos.y }],
-      text: tool === 'text' ? 'New Text' : tool === 'sticky' ? 'New Note' : undefined
     };
+    
+    // Auto-create text/sticky to avoid dragging
+    if (activeTool === 'text' || activeTool === 'sticky') {
+      setIsDrawing(false); // don't track drag
+      if (activeTool === 'text') {
+        setEditingText({ ...currentElement.current, text: '' });
+      } else {
+        // Sticky
+        currentElement.current.text = 'Double click to edit';
+        addElement(currentElement.current);
+        publishElementCreate(currentElement.current);
+      }
+      setActiveTool('select');
+      currentElement.current = null;
+    }
   };
 
   const handlePointerMove = (e) => {
-    const pos = getPointerPos(e);
-    if (onCursorMove) onCursorMove(pos.x, pos.y);
+    if (editingText) return;
+
+    const pos = screenToWorld(e.clientX, e.clientY);
+    
+    const now = Date.now();
+    if (now - lastCursorSend.current > 50) {
+      sendCursor({ cursorX: pos.x, cursorY: pos.y });
+      lastCursorSend.current = now;
+    }
     
     if (isPanning) {
-      setPan({ x: e.clientX - startPan.current.x, y: e.clientY - startPan.current.y });
+      setPanOffset({ x: e.clientX - startPan.current.x, y: e.clientY - startPan.current.y });
       return;
     }
     
-    if (isDragging && selectedId) {
+    if (isDragging && selectedIds.size > 0) {
+      const selectedId = Array.from(selectedIds)[0]; // single select for now
       const el = elements.find(el => el.id === selectedId);
       if (el) {
          const newX = pos.x - dragOffset.current.x;
@@ -274,7 +255,8 @@ const WhiteboardCanvas = forwardRef(function WhiteboardCanvas({
          if (newEl.x1 !== undefined) { newEl.x1 += dx; newEl.x2 += dx; }
          if (newEl.y1 !== undefined) { newEl.y1 += dy; newEl.y2 += dy; }
          if (newEl.points) newEl.points = newEl.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
-         onUpdateElement(newEl);
+         lastDraggedElement.current = newEl;
+         updateElement(newEl);
       }
       return;
     }
@@ -282,7 +264,7 @@ const WhiteboardCanvas = forwardRef(function WhiteboardCanvas({
     if (isDrawing && currentElement.current) {
       currentElement.current.x2 = pos.x;
       currentElement.current.y2 = pos.y;
-      if (tool === 'pen') {
+      if (activeTool === 'pen') {
          currentElement.current.points.push({ x: pos.x, y: pos.y });
       }
       
@@ -295,20 +277,30 @@ const WhiteboardCanvas = forwardRef(function WhiteboardCanvas({
       }
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.save();
-      ctx.translate(pan.x, pan.y);
-      ctx.scale(scale, scale);
+      ctx.translate(panOffset.x, panOffset.y);
+      ctx.scale(zoom, zoom);
       drawElement(ctx, currentElement.current);
       ctx.restore();
     }
   };
 
   const handlePointerUp = (e) => {
+    if (editingText) return;
+
     setIsPanning(false);
+    if (isDragging && selectedIds.size > 0) {
+      const selectedId = Array.from(selectedIds)[0];
+      const el = lastDraggedElement.current || elements.find(item => item.id === selectedId);
+      if (el) publishElementUpdate(el);
+      lastDraggedElement.current = null;
+    }
     setIsDragging(false);
     if (isDrawing && currentElement.current) {
       setIsDrawing(false);
-      onAddElement(currentElement.current);
+      addElement(currentElement.current);
+      publishElementCreate(currentElement.current);
       currentElement.current = null;
+      
       const canvas = activeCanvasRef.current;
       if (canvas) {
          const ctx = canvas.getContext('2d');
@@ -317,19 +309,35 @@ const WhiteboardCanvas = forwardRef(function WhiteboardCanvas({
     }
   };
 
+  const handleDoubleClick = (e) => {
+    const pos = screenToWorld(e.clientX, e.clientY);
+    let hit = null;
+    const sorted = [...elements].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+    for (let i = sorted.length - 1; i >= 0; i--) {
+        if (isHit(sorted[i], pos.x, pos.y)) { hit = sorted[i]; break; }
+    }
+    
+    if (hit && (hit.type === 'text' || hit.type === 'sticky')) {
+      setEditingText(hit);
+    }
+  };
+
   const handleWheel = (e) => {
     e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
       // Zoom
       const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      const newScale = Math.min(Math.max(scale * zoomFactor, 0.1), 5);
-      const dx = e.clientX - pan.x;
-      const dy = e.clientY - pan.y;
-      setPan({ x: e.clientX - dx * (newScale / scale), y: e.clientY - dy * (newScale / scale) });
-      setScale(newScale);
+      const newZoom = Math.min(Math.max(zoom * zoomFactor, 0.1), 5);
+      const dx = e.clientX - panOffset.x;
+      const dy = e.clientY - panOffset.y;
+      setPanOffset({ 
+        x: e.clientX - dx * (newZoom / zoom), 
+        y: e.clientY - dy * (newZoom / zoom) 
+      });
+      setZoom(newZoom);
     } else {
       // Pan
-      setPan(p => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
+      setPanOffset(p => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
     }
   };
 
@@ -338,46 +346,131 @@ const WhiteboardCanvas = forwardRef(function WhiteboardCanvas({
     if (!el) return;
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
-  }, [pan, scale]);
+  }, [panOffset, zoom]);
 
-  const selectedEl = selectedId ? elements.find((e) => e.id === selectedId) : null;
-  const multiCount = selectedIds.size;
-  const hasActionBar = (selectedId && !isDragging && tool === 'select') || multiCount > 1;
+  // Contextual Action Bar
+  const hasSelection = selectedIds.size > 0;
+  
+  const layerUp = () => {
+    if (!hasSelection) return;
+    const id = Array.from(selectedIds)[0];
+    const el = elements.find(e => e.id === id);
+    if (!el) return;
+    const maxZ = Math.max(...elements.map(e => e.zIndex || 0));
+    const next = { ...el, zIndex: maxZ + 1 };
+    saveSnapshot();
+    updateElement(next);
+    publishElementUpdate(next);
+  };
+  
+  const layerDown = () => {
+    if (!hasSelection) return;
+    const id = Array.from(selectedIds)[0];
+    const el = elements.find(e => e.id === id);
+    if (!el) return;
+    const minZ = Math.min(...elements.map(e => e.zIndex || 0));
+    const next = { ...el, zIndex: minZ - 1 };
+    saveSnapshot();
+    updateElement(next);
+    publishElementUpdate(next);
+  };
+
+  const getCursor = () => {
+    if (isPanning || activeTool === 'pan') return 'grab';
+    if (activeTool === 'select') return 'default';
+    if (activeTool === 'eraser') return 'cell';
+    if (activeTool === 'text') return 'text';
+    return 'crosshair';
+  };
 
   return (
     <div 
       ref={containerRef}
-      style={{ position: 'absolute', inset: 0, touchAction: 'none' }}
+      style={{ position: 'absolute', inset: 0, touchAction: 'none', overflow: 'hidden' }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
+      onDoubleClick={handleDoubleClick}
     >
       {/* Contextual Action Bar */}
-      {hasActionBar && (
-        <div style={{ position: 'absolute', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 100, background: 'var(--surface-elevated)', border: '1px solid var(--border-subtle)', borderRadius: 10, padding: '6px 12px', display: 'flex', gap: 6, backdropFilter: 'blur(12px)', alignItems: 'center', boxShadow: 'var(--shadow-md)' }}>
-          {selectedEl && onBringToFront && (
-            <button className="btn btn-secondary btn-sm" onClick={() => onBringToFront(selectedId)}>Bring Front</button>
-          )}
-          {selectedEl && onSendToBack && (
-            <button className="btn btn-secondary btn-sm" onClick={() => onSendToBack(selectedId)}>Send Back</button>
-          )}
-          <button className="btn btn-danger btn-sm" style={{ color: 'var(--error)' }} onClick={() => {
-            if (selectedId) { onDeleteElement(selectedId); setSelectedId(null); }
-          }}>Delete</button>
+      {hasSelection && !isDragging && activeTool === 'select' && (
+        <div style={{ 
+          position: 'absolute', top: 80, left: '50%', transform: 'translateX(-50%)', 
+          zIndex: 100, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', 
+          borderRadius: 'var(--r-md)', padding: '6px 12px', display: 'flex', gap: '6px', 
+          backdropFilter: 'blur(16px)', alignItems: 'center', boxShadow: 'var(--shadow-lg)' 
+        }}>
+          <button className="btn btn-secondary btn-sm" onClick={layerUp}>Bring Forward</button>
+          <button className="btn btn-secondary btn-sm" onClick={layerDown}>Send Backward</button>
+          <button
+            className="btn btn-danger btn-sm"
+            onClick={() => {
+              const ids = Array.from(selectedIds);
+              deleteElements(ids);
+              publishElementDelete(ids);
+            }}
+          >
+            Delete
+          </button>
         </div>
       )}
 
+      {/* Editing Text Overlay */}
+      {editingText && (
+        <EditableTextOverlay
+          text={editingText.text}
+          x={editingText.x}
+          y={editingText.y}
+          color={editingText.strokeColor || editingText.color || '#111827'}
+          fontSize={editingText.fontSize || 18}
+          zoom={zoom}
+          panOffset={panOffset}
+          onSave={(newText) => {
+            if (newText.trim() === '') {
+              // Ignore empty
+            } else {
+              if (elements.find(e => e.id === editingText.id)) {
+                const next = { ...editingText, text: newText };
+                saveSnapshot();
+                updateElement(next);
+                publishElementUpdate(next);
+              } else {
+                const next = { ...editingText, text: newText };
+                addElement(next);
+                publishElementCreate(next);
+              }
+            }
+            setEditingText(null);
+            setActiveTool('select');
+          }}
+          onCancel={() => setEditingText(null)}
+        />
+      )}
+
+      {/* Grid Pattern */}
+      <div 
+        style={{
+          position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none',
+          backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
+          backgroundSize: `${24 * zoom}px ${24 * zoom}px`,
+          backgroundImage: 'radial-gradient(var(--canvas-dot) 1px, transparent 1px)'
+        }}
+      />
+
       <canvas ref={canvasRef} className="canvas-layer" style={{ zIndex: 10 }} />
-      <canvas ref={activeCanvasRef} className="canvas-layer" style={{ zIndex: 20, cursor: tool === 'eraser' ? 'cell' : tool === 'select' ? 'default' : 'crosshair' }} />
+      <canvas ref={activeCanvasRef} className="canvas-layer" style={{ zIndex: 20, cursor: getCursor() }} />
 
       {/* Remote cursors */}
       {Object.entries(remoteUsers).map(([id, u]) => (
-        <div key={id} className="remote-cursor" style={{ transform: `translate(${u.x * scale + pan.x}px, ${u.y * scale + pan.y}px)`, zIndex: 50, '--cursor-color': u.color }}>
+        <div key={id} className="remote-cursor" style={{ 
+          transform: `translate(${u.x * zoom + panOffset.x}px, ${u.y * zoom + panOffset.y}px)`, 
+          zIndex: 50, '--cursor-color': u.color 
+        }}>
           <svg width="18" height="18" viewBox="0 0 24 24" className="cursor-arrow">
             <path d="M5 3l14 9-7 2-2 7z" fill={u.color} stroke="white" strokeWidth="1.5" />
           </svg>
-          <div className="cursor-label">{u.name}</div>
+          <div className="cursor-label">{u.name} {u.handRaised && '✋'}</div>
         </div>
       ))}
     </div>

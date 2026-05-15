@@ -2,6 +2,14 @@ import React from 'react';
 import { LayoutTemplate, AlignStartVertical, GitBranch } from 'lucide-react';
 
 export default function TemplateLibrary({ onClose, onAddElement, userId }) {
+  const withDefaults = (element, index) => ({
+    strokeColor: '#111827',
+    fillColor: 'transparent',
+    strokeWidth: 2,
+    zIndex: Date.now() + index,
+    userId,
+    ...element,
+  });
 
   const insertKanban = () => {
     const templates = [];
@@ -18,9 +26,8 @@ export default function TemplateLibrary({ onClose, onAddElement, userId }) {
         x: x + 100,
         y: baseY + 30,
         text: col,
-        color: '#fbbf24',
+        strokeColor: '#111827',
         fontSize: 24,
-        userId
       });
       // Vertical divider
       templates.push({
@@ -30,9 +37,8 @@ export default function TemplateLibrary({ onClose, onAddElement, userId }) {
         y1: baseY,
         x2: x + 280,
         y2: baseY + 800,
-        color: 'rgba(255,255,255,0.2)',
+        strokeColor: '#d1d5db',
         strokeWidth: 2,
-        userId
       });
       // Example sticky
       templates.push({
@@ -43,29 +49,28 @@ export default function TemplateLibrary({ onClose, onAddElement, userId }) {
         width: 160,
         height: 120,
         text: `Example ${col} task`,
-        bgColor: ['#fbbf24','#34d399','#60a5fa'][i],
-        userId
+        fillColor: ['#fde68a','#bbf7d0','#bfdbfe'][i],
       });
     });
 
-    templates.forEach(el => onAddElement(el));
+    templates.map(withDefaults).forEach(el => onAddElement(el));
     onClose();
   };
 
   const insertFlowchart = () => {
     const templates = [
-      { id: crypto.randomUUID(), type: 'rect', x1: 300, y1: 100, x2: 450, y2: 160, color: '#60a5fa', strokeWidth: 3, userId },
-      { id: crypto.randomUUID(), type: 'text', x: 340, y: 135, text: 'Start', color: '#fff', fontSize: 18, userId },
-      { id: crypto.randomUUID(), type: 'arrow', x1: 375, y1: 160, x2: 375, y2: 220, color: '#fff', strokeWidth: 2, userId },
+      { id: crypto.randomUUID(), type: 'rect', x1: 300, y1: 100, x2: 450, y2: 160, strokeColor: '#2563eb', fillColor: '#dbeafe', strokeWidth: 3 },
+      { id: crypto.randomUUID(), type: 'text', x: 340, y: 135, text: 'Start', strokeColor: '#111827', fontSize: 18 },
+      { id: crypto.randomUUID(), type: 'arrow', x1: 375, y1: 160, x2: 375, y2: 220, strokeColor: '#2563eb', strokeWidth: 2 },
       
-      { id: crypto.randomUUID(), type: 'rect', x1: 275, y1: 220, x2: 475, y2: 300, color: '#34d399', strokeWidth: 3, userId },
-      { id: crypto.randomUUID(), type: 'text', x: 300, y: 265, text: 'Process Step', color: '#fff', fontSize: 18, userId },
-      { id: crypto.randomUUID(), type: 'arrow', x1: 375, y1: 300, x2: 375, y2: 360, color: '#fff', strokeWidth: 2, userId },
+      { id: crypto.randomUUID(), type: 'rect', x1: 275, y1: 220, x2: 475, y2: 300, strokeColor: '#059669', fillColor: '#d1fae5', strokeWidth: 3 },
+      { id: crypto.randomUUID(), type: 'text', x: 300, y: 265, text: 'Process Step', strokeColor: '#111827', fontSize: 18 },
+      { id: crypto.randomUUID(), type: 'arrow', x1: 375, y1: 300, x2: 375, y2: 360, strokeColor: '#059669', strokeWidth: 2 },
       
-      { id: crypto.randomUUID(), type: 'rect', x1: 300, y1: 360, x2: 450, y2: 420, color: '#f87171', strokeWidth: 3, userId },
-      { id: crypto.randomUUID(), type: 'text', x: 345, y: 395, text: 'End', color: '#fff', fontSize: 18, userId },
+      { id: crypto.randomUUID(), type: 'rect', x1: 300, y1: 360, x2: 450, y2: 420, strokeColor: '#dc2626', fillColor: '#fee2e2', strokeWidth: 3 },
+      { id: crypto.randomUUID(), type: 'text', x: 345, y: 395, text: 'End', strokeColor: '#111827', fontSize: 18 },
     ];
-    templates.forEach(el => onAddElement(el));
+    templates.map(withDefaults).forEach(el => onAddElement(el));
     onClose();
   };
 
