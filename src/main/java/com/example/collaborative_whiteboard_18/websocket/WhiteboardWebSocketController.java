@@ -4,15 +4,21 @@ import com.example.collaborative_whiteboard_18.model.ChatMessage;
 import com.example.collaborative_whiteboard_18.model.DrawingEvent;
 import com.example.collaborative_whiteboard_18.service.ChatService;
 import com.example.collaborative_whiteboard_18.service.DrawingService;
+import com.example.collaborative_whiteboard_18.service.SessionService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.event.EventListener;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.socket.messaging.SessionDisconnectEvent;
+import org.springframework.web.socket.messaging.SessionSubscribeEvent;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.*;
 
 @Controller
 @RequiredArgsConstructor
@@ -21,18 +27,75 @@ public class WhiteboardWebSocketController {
     private final SimpMessagingTemplate messagingTemplate;
     private final DrawingService drawingService;
     private final ChatService chatService;
-    private final com.example.collaborative_whiteboard_18.service.SessionService sessionService;
+    private final SessionService sessionService;
 
     /**
-     * Drawing events: ELEMENT_ADD, ELEMENT_UPDATE, ELEMENT_DELETE, CLEAR, ELEMENTS_SYNC
-     * Frontend sends to:   /app/draw
-     * Frontend listens on: /topic/board/{sessionId}
+     * Maps STOMP session id → [boardRoomId, userId]
+     * Populated on /join so we know which user owned which socket.
+     */
+    private final Map<String, String[]> stompToApp = new ConcurrentHashMap<>();
+
+    /**
+     * Maps boardRoomId → ScheduledFuture for owner-disconnect grace timer.
+     * Cancelled if the owner reconnects within 60 s.
+     */
+    private final Map<String, ScheduledFuture<?>> graceTimers = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4);
+
+    // ─── WebSocket lifecycle events ──────────────────────────────────────────
+
+    @EventListener
+    public void onDisconnect(SessionDisconnectEvent event) {
+        StompHeaderAccessor sha = StompHeaderAccessor.wrap(event.getMessage());
+        String stompId = sha.getSessionId();
+        String[] info  = stompToApp.remove(stompId);
+        if (info == null) return;
+
+        String roomId = info[0];
+        String userId = info[1];
+
+        sessionService.getSession(roomId).ifPresent(session -> {
+            boolean isOwner = session.getParticipants().stream()
+                    .anyMatch(p -> p.getUserId().equals(userId) && "OWNER".equals(p.getRole()));
+            if (isOwner) {
+                // Start a 60-second grace period before pausing the meeting
+                ScheduledFuture<?> future = scheduler.schedule(() -> {
+                    sessionService.toggleSession(roomId, "PAUSED");
+                    WebSocketMessage msg = WebSocketMessage.builder()
+                            .type("MEETING_PAUSED")
+                            .sessionId(roomId)
+                            .build();
+                    messagingTemplate.convertAndSend("/topic/board/" + roomId, msg);
+                }, 60, TimeUnit.SECONDS);
+                graceTimers.put(roomId, future);
+            }
+        });
+    }
+
+    // ─── Drawing ─────────────────────────────────────────────────────────────
+
+    /**
+     * /app/draw handles: ELEMENT_ADD, ELEMENT_UPDATE, ELEMENT_DELETE,
+     *                    CLEAR, ELEMENTS_SYNC, WEBRTC_SIGNAL,
+     *                    TYPING_START, TYPING_STOP
      */
     @MessageMapping("/draw")
-    public void handleDrawing(@Payload WebSocketMessage message) {
+    public void handleDraw(@Payload WebSocketMessage message) {
         String type = message.getType();
 
-        if (type != null && !type.equals("CURSOR_MOVE") && !type.equals("WEBRTC_SIGNAL")) {
+        // Passthrough types that skip persistence / RBAC
+        boolean skipPersist = type == null
+                || type.equals("CURSOR_MOVE")
+                || type.equals("WEBRTC_SIGNAL")
+                || type.equals("TYPING_START")
+                || type.equals("TYPING_STOP");
+
+        if (!skipPersist) {
+            // RBAC: only editors and above may mutate canvas
+            if (!sessionService.canEdit(message.getSessionId(), message.getUserId())) {
+                return; // silently drop
+            }
+
             DrawingEvent event = DrawingEvent.builder()
                     .sessionId(message.getSessionId())
                     .userId(message.getUserId())
@@ -42,21 +105,20 @@ public class WhiteboardWebSocketController {
                     .build();
             drawingService.saveEvent(event);
 
-            if (type.equals("ELEMENT_ADD") || type.equals("ELEMENT_UPDATE")) {
-                Object elementObj = message.getAdditionalProperties().get("element");
-                if (elementObj instanceof Map) {
+            if ("ELEMENT_ADD".equals(type) || "ELEMENT_UPDATE".equals(type)) {
+                Object el = message.getAdditionalProperties().get("element");
+                if (el instanceof Map) {
                     @SuppressWarnings("unchecked")
-                    Map<String, Object> element = (Map<String, Object>) elementObj;
+                    Map<String, Object> element = (Map<String, Object>) el;
                     sessionService.upsertElement(message.getSessionId(), element);
                 }
-            } else if (type.equals("CLEAR")) {
+            } else if ("CLEAR".equals(type)) {
                 sessionService.updateElements(message.getSessionId(), new java.util.ArrayList<>());
-            } else if (type.equals("ELEMENTS_SYNC")) {
-                // Undo/Redo full-state sync — overwrite persisted elements
-                Object elementsObj = message.getAdditionalProperties().get("elements");
-                if (elementsObj instanceof List) {
+            } else if ("ELEMENTS_SYNC".equals(type)) {
+                Object els = message.getAdditionalProperties().get("elements");
+                if (els instanceof List) {
                     @SuppressWarnings("unchecked")
-                    List<Map<String, Object>> elements = (List<Map<String, Object>>) elementsObj;
+                    List<Map<String, Object>> elements = (List<Map<String, Object>>) els;
                     sessionService.updateElements(message.getSessionId(), elements);
                 }
             }
@@ -65,49 +127,72 @@ public class WhiteboardWebSocketController {
         messagingTemplate.convertAndSend("/topic/board/" + message.getSessionId(), message);
     }
 
-    /** Hand raise */
-    @MessageMapping("/handraise")
-    public void handleHandRaise(@Payload WebSocketMessage message) {
-        messagingTemplate.convertAndSend("/topic/board/" + message.getSessionId(), message);
-    }
+    // ─── Cursor (real-time only) ──────────────────────────────────────────────
 
-    /** Cursor — real-time only, not persisted */
     @MessageMapping("/cursor")
     public void handleCursor(@Payload WebSocketMessage message) {
         messagingTemplate.convertAndSend("/topic/board/" + message.getSessionId(), message);
     }
 
-    /** User join */
+    // ─── Join ────────────────────────────────────────────────────────────────
+
     @MessageMapping("/join")
-    public void handleJoin(@Payload WebSocketMessage message) {
+    public void handleJoin(@Payload WebSocketMessage message, StompHeaderAccessor sha) {
+        String stompId = sha.getSessionId();
+        if (stompId != null) {
+            stompToApp.put(stompId, new String[]{ message.getSessionId(), message.getUserId() });
+        }
+
+        // If the owner is returning, cancel the grace timer
+        ScheduledFuture<?> timer = graceTimers.remove(message.getSessionId());
+        if (timer != null) {
+            timer.cancel(false);
+            // Restore to ACTIVE if it was PAUSED
+            sessionService.getSession(message.getSessionId()).ifPresent(s -> {
+                if ("PAUSED".equals(s.getStatus())) {
+                    sessionService.toggleSession(message.getSessionId(), "ACTIVE");
+                    WebSocketMessage resume = WebSocketMessage.builder()
+                            .type("MEETING_RESUMED")
+                            .sessionId(message.getSessionId())
+                            .build();
+                    messagingTemplate.convertAndSend("/topic/board/" + message.getSessionId(), resume);
+                }
+            });
+        }
+
         messagingTemplate.convertAndSend("/topic/board/" + message.getSessionId(), message);
     }
 
-    /** User leave */
+    // ─── Leave ───────────────────────────────────────────────────────────────
+
     @MessageMapping("/leave")
     public void handleLeave(@Payload WebSocketMessage message) {
         messagingTemplate.convertAndSend("/topic/board/" + message.getSessionId(), message);
     }
 
-    /**
-     * Chat messages
-     * Frontend sends to:   /app/chat
-     * Frontend listens on: /topic/chat/{sessionId}
-     */
+    // ─── Hand Raise ──────────────────────────────────────────────────────────
+
+    @MessageMapping("/handraise")
+    public void handleHandRaise(@Payload WebSocketMessage message) {
+        messagingTemplate.convertAndSend("/topic/board/" + message.getSessionId(), message);
+    }
+
+    // ─── Chat ────────────────────────────────────────────────────────────────
+
     @MessageMapping("/chat")
     public void handleChat(@Payload WebSocketMessage message) {
-        String content = null;
-        String senderName = null;
+        String content     = null;
+        String senderName  = null;
         String senderColor = null;
 
-        // Data payload takes priority; fall back to top-level fields via @JsonAnyGetter
         if (message.getData() != null) {
-            content = (String) message.getData().get("content");
-            senderName = (String) message.getData().get("senderName");
+            content     = (String) message.getData().get("content");
+            senderName  = (String) message.getData().get("senderName");
             senderColor = (String) message.getData().get("senderColor");
         }
-        if (content == null) content = (String) message.getAdditionalProperties().get("content");
-        if (senderName == null) senderName = (String) message.getAdditionalProperties().get("senderName");
+        // Fallback to top-level fields via @JsonAnyGetter
+        if (content     == null) content     = (String) message.getAdditionalProperties().get("content");
+        if (senderName  == null) senderName  = (String) message.getAdditionalProperties().get("senderName");
         if (senderColor == null) senderColor = (String) message.getAdditionalProperties().get("senderColor");
 
         ChatMessage chat = ChatMessage.builder()
@@ -119,9 +204,8 @@ public class WhiteboardWebSocketController {
                 .timestamp(LocalDateTime.now())
                 .build();
 
+        // Persist and re-broadcast the saved entity (includes DB-assigned id)
         ChatMessage saved = chatService.sendMessage(chat);
-
-        // Re-broadcast the fully-hydrated saved message so clients get the real id + senderName
         messagingTemplate.convertAndSend("/topic/chat/" + message.getSessionId(), saved);
     }
 }

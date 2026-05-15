@@ -13,19 +13,22 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * REST endpoints that match frontend api.js exactly:
+ * REST endpoints:
  *
- *  POST   /api/sessions                  → create
- *  GET    /api/sessions                  → getAll
- *  GET    /api/sessions/active           → getActive
- *  GET    /api/sessions/analytics        → analytics (moved here from AnalyticsController)
- *  GET    /api/sessions/{id}             → getById
- *  PUT    /api/sessions/{id}/elements    → updateElements (canvas auto-save)
- *  DELETE /api/sessions/{id}             → delete
- *  GET    /api/sessions/{id}/users       → getUsers
- *  PUT    /api/sessions/{id}/toggle      → toggle active/inactive
- *  POST   /api/sessions/join             → join by shareCode
- *  POST   /api/sessions/{id}/leave       → leave
+ *  POST   /api/sessions
+ *  GET    /api/sessions
+ *  GET    /api/sessions/active
+ *  GET    /api/sessions/analytics
+ *  GET    /api/sessions/{id}
+ *  PUT    /api/sessions/{id}/elements
+ *  PUT    /api/sessions/{id}/toggle
+ *  DELETE /api/sessions/{id}
+ *  GET    /api/sessions/{id}/users
+ *  POST   /api/sessions/join            (shareCode + userId params)
+ *  POST   /api/sessions/{id}/leave
+ *  POST   /api/sessions/{id}/remove-user
+ *  PUT    /api/sessions/{id}/role
+ *  POST   /api/sessions/{id}/lock
  */
 @RestController
 @RequestMapping("/api/sessions")
@@ -35,7 +38,6 @@ public class SessionController {
     private final SessionService sessionService;
 
     // ── Create ──────────────────────────────────────────────────────────────
-    // BUG FIX: was @RequestParam; frontend sends JSON body → use @RequestBody + DTO
     @PostMapping
     public ResponseEntity<?> createSession(@RequestBody CreateSessionRequest req) {
         WhiteboardSession session = sessionService.createSession(
@@ -54,16 +56,12 @@ public class SessionController {
         return ResponseEntity.ok(sessionService.getActiveSessions());
     }
 
-    // Analytics moved here so frontend path /api/sessions/analytics works
-    // (was at /api/analytics — path mismatch)
     @GetMapping("/analytics")
     public ResponseEntity<?> getAnalytics() {
-        Map<String, Object> data = sessionService.getAnalytics();
-        return ResponseEntity.ok(data);
+        return ResponseEntity.ok(sessionService.getAnalytics());
     }
 
-    // NOTE: specific paths (active, analytics) MUST be declared before /{id}
-    // otherwise Spring maps them as IDs
+    // IMPORTANT: /active and /analytics must be declared BEFORE /{id}
     @GetMapping("/{id}")
     public ResponseEntity<?> getSession(@PathVariable String id) {
         return sessionService.getSession(id)
@@ -76,8 +74,7 @@ public class SessionController {
     public ResponseEntity<?> updateElements(@PathVariable String id,
                                             @RequestBody UpdateElementsRequest req) {
         try {
-            WhiteboardSession updated = sessionService.updateElements(id, req.getElements());
-            return ResponseEntity.ok(updated);
+            return ResponseEntity.ok(sessionService.updateElements(id, req.getElements()));
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
@@ -87,8 +84,7 @@ public class SessionController {
     public ResponseEntity<?> toggleSession(@PathVariable String id,
                                            @RequestBody ToggleRequest req) {
         try {
-            WhiteboardSession updated = sessionService.toggleSession(id, req.isActive());
-            return ResponseEntity.ok(updated);
+            return ResponseEntity.ok(sessionService.toggleSession(id, req.resolvedStatus()));
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
         }
@@ -111,7 +107,7 @@ public class SessionController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // ── Session Participation ─────────────────────────────────────────────────
+    // ── Participation ─────────────────────────────────────────────────────────
     @PostMapping("/join")
     public ResponseEntity<?> joinSession(@RequestParam String shareCode,
                                          @RequestParam String userId) {

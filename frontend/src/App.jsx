@@ -1,10 +1,10 @@
-// ⚠️  FILE LOCATION: src/App.jsx   (same level as main.jsx — NOT inside src/components/)
-//     main.jsx does:  import App from './App'
-//     If you place this in src/components/, that import breaks and you get
-//     "GET is not supported" errors from failed module resolution fallbacks.
-
-import { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { ToastProvider, useToast } from './components/ToastSystem';
 import { auth } from './services/authUtils';
+import { sessionAPI } from './services/api';
+
 import LoginPage      from './components/LoginPage';
 import LandingPage    from './components/LandingPage';
 import WhiteboardApp  from './components/WhiteboardApp';
@@ -15,15 +15,18 @@ const randomColor  = () => USER_COLORS[Math.floor(Math.random() * USER_COLORS.le
 
 function buildUser(authUser) {
   return {
-    id:    authUser.userId,
+    id:    String(authUser.userId),
     name:  authUser.name,
     email: authUser.email,
     color: randomColor(),
   };
 }
 
-export default function App() {
-  // Restore session from localStorage on first load
+function MainApp() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const toast = useToast();
+
   const [loggedInUser, setLoggedInUser] = useState(() => {
     if (auth.isLoggedIn()) {
       const stored = auth.getUser();
@@ -32,58 +35,139 @@ export default function App() {
     return null;
   });
 
-  const [view,    setView]    = useState('landing');
-  const [session, setSession] = useState(null);
-
-  const handleAuthSuccess = useCallback((authUser) => {
-    setLoggedInUser(buildUser(authUser));
-    setView('landing');
-  }, []);
-
-  const handleJoinSession = useCallback((sessionData, displayName) => {
-    if (displayName && displayName !== loggedInUser?.name) {
-      setLoggedInUser(u => ({ ...u, name: displayName }));
+  // Handle ?shareCode= from URL
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const shareCode = params.get('shareCode');
+    
+    if (shareCode) {
+      // Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      if (!loggedInUser) {
+        sessionStorage.setItem('pendingShareCode', shareCode);
+        toast.info('Please sign in to join the board');
+        navigate('/login');
+        return;
+      }
+      
+      joinWithCode(shareCode, String(loggedInUser.id));
     }
-    setSession(sessionData);
-    setView('whiteboard');
+  }, [location.search, loggedInUser, navigate, toast]);
+
+  // Handle pending share code after login
+  useEffect(() => {
+    if (loggedInUser) {
+      const pending = sessionStorage.getItem('pendingShareCode');
+      if (pending) {
+        sessionStorage.removeItem('pendingShareCode');
+        joinWithCode(pending, String(loggedInUser.id));
+      }
+    }
   }, [loggedInUser]);
 
-  const handleLeaveSession = useCallback(() => {
-    setSession(null);
-    setView('landing');
-  }, []);
+  const joinWithCode = async (code, userId) => {
+    try {
+      const sessionData = await sessionAPI.joinSession(code, userId);
+      navigate(`/board/${sessionData.id}`, { state: { sessionData } });
+    } catch (err) {
+      toast.error('Failed to join session: ' + err.message);
+    }
+  };
 
   const handleLogout = useCallback(() => {
     auth.clear();
     setLoggedInUser(null);
-    setSession(null);
-    setView('landing');
-  }, []);
-
-  if (!loggedInUser) {
-    return <LoginPage onAuthSuccess={handleAuthSuccess} />;
-  }
-
-  if (view === 'admin') {
-    return <AdminDashboard onBack={() => setView('landing')} />;
-  }
-
-  if (view === 'whiteboard' && session) {
-    return (
-      <WhiteboardApp
-        session={session}
-        user={loggedInUser}
-        onLeave={handleLeaveSession}
-      />
-    );
-  }
+    navigate('/');
+  }, [navigate]);
 
   return (
-    <LandingPage
-      currentUser={loggedInUser}
-      onJoinSession={handleJoinSession}
-      onGoAdmin={() => setView('admin')}
-      onLogout={handleLogout}
+    <Routes>
+      <Route 
+        path="/" 
+        element={
+          <LandingPage 
+            currentUser={loggedInUser} 
+            onLogout={handleLogout} 
+          />
+        } 
+      />
+      <Route 
+        path="/login" 
+        element={
+          <LoginPage 
+            onAuthSuccess={(u) => { 
+              setLoggedInUser(buildUser(u)); 
+              navigate('/'); 
+            }} 
+          />
+        } 
+      />
+      <Route 
+        path="/register" 
+        element={
+          <LoginPage 
+            onAuthSuccess={(u) => { 
+              setLoggedInUser(buildUser(u)); 
+              navigate('/'); 
+            }} 
+          />
+        } 
+      />
+      <Route 
+        path="/dashboard" 
+        element={loggedInUser ? <AdminDashboard /> : <LoginPage />} 
+      />
+      <Route 
+        path="/board/:id" 
+        element={<BoardRoute loggedInUser={loggedInUser} />} 
+      />
+    </Routes>
+  );
+}
+
+// Wrapper for WhiteboardApp to extract ID and Session
+function BoardRoute({ loggedInUser }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { id } = useParams();
+  const [sessionData, setSessionData] = useState(location.state?.sessionData || null);
+
+  useEffect(() => {
+    if (!sessionData && loggedInUser) {
+      sessionAPI.getAllSessions()
+        .then(sessions => {
+          const s = sessions.find(s => s.id === id);
+          if (s) setSessionData(s);
+          else navigate('/');
+        })
+        .catch(() => navigate('/'));
+    }
+  }, [id, sessionData, loggedInUser, navigate]);
+
+  if (!loggedInUser) {
+    return <LoginPage onAuthSuccess={() => {}} />;
+  }
+
+  if (!sessionData) return null;
+
+  return (
+    <WhiteboardApp 
+      session={sessionData} 
+      user={loggedInUser} 
+      onLeave={() => navigate('/')} 
     />
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <BrowserRouter>
+          <MainApp />
+        </BrowserRouter>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

@@ -91,7 +91,7 @@ export default function Toolbar({
         <button
           key={id}
           className={`tool-btn ${tool === id ? 'active' : ''}`}
-          onClick={() => setTool(id)}
+          onClick={() => setTool(tool === id ? 'select' : id)}
           title={label}
         >
           <Icon size={18} />

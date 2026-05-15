@@ -80,7 +80,7 @@ function ChatPanel({ messages, currentUserId, onSendChat }) {
   );
 }
 
-function UsersPanel({ users, raisedHands }) {
+function UsersPanel({ users, raisedHands, currentUserRole, onKickUser, onPromoteUser }) {
   return (
     <div className="users-list">
       {users.map(u => {
@@ -99,9 +99,29 @@ function UsersPanel({ users, raisedHands }) {
                   </span>
                 )}
               </div>
-              <div className="user-status">● Online</div>
+              <div className="user-status">
+                {u.role === 'OWNER' && <span style={{color: '#fbbf24', fontSize: '0.7rem', marginRight: 4}}>👑 Owner</span>}
+                {u.role === 'ADMIN' && <span style={{color: '#60a5fa', fontSize: '0.7rem', marginRight: 4}}>🛡️ Admin</span>}
+                {u.role === 'PRESENTER' && <span style={{color: '#34d399', fontSize: '0.7rem', marginRight: 4}}>🎤 Presenter</span>}
+                {u.role === 'VIEWER' && <span style={{color: '#94a3b8', fontSize: '0.7rem', marginRight: 4}}>👁️ Viewer</span>}
+                ● Online
+              </div>
             </div>
             {u.isYou && <span className="you-badge">You</span>}
+            
+            {/* Moderation Controls */}
+            {!u.isYou && (currentUserRole === 'OWNER' || currentUserRole === 'ADMIN') && u.role !== 'OWNER' && (
+              <div className="mod-controls" style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                {currentUserRole === 'OWNER' && u.role !== 'ADMIN' && (
+                  <button className="btn btn-secondary btn-sm" style={{padding: '2px 6px', fontSize: '0.65rem'}} onClick={() => onPromoteUser(u.id, 'ADMIN')}>
+                    Make Admin
+                  </button>
+                )}
+                <button className="btn btn-danger btn-sm" style={{padding: '2px 6px', fontSize: '0.65rem'}} onClick={() => onKickUser(u.id)}>
+                  Kick
+                </button>
+              </div>
+            )}
           </div>
         );
       })}
@@ -109,7 +129,7 @@ function UsersPanel({ users, raisedHands }) {
   );
 }
 
-export default function Sidebar({ open, tab, setTab, messages, users, currentUserId, onSendChat, raisedHands = [] }) {
+export default function Sidebar({ open, tab, setTab, messages, users, currentUserId, currentUserRole, onSendChat, raisedHands = [], onKickUser, onPromoteUser }) {
   return (
     <div className={`sidebar ${open ? '' : 'collapsed'}`}>
       <div className="sidebar-tabs">
@@ -125,7 +145,7 @@ export default function Sidebar({ open, tab, setTab, messages, users, currentUse
           <ChatPanel messages={messages} currentUserId={currentUserId} onSendChat={onSendChat} />
         )}
         {tab === 'users' && (
-          <UsersPanel users={users} raisedHands={raisedHands} />
+          <UsersPanel users={users} raisedHands={raisedHands} currentUserRole={currentUserRole} onKickUser={onKickUser} onPromoteUser={onPromoteUser} />
         )}
       </div>
     </div>
