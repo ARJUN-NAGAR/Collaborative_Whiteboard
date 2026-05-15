@@ -135,7 +135,7 @@ function BoardRoute({ loggedInUser }) {
 
   useEffect(() => {
     if (!sessionData && loggedInUser) {
-      sessionAPI.getAllSessions()
+      sessionAPI.getAll()
         .then(sessions => {
           const s = sessions.find(s => s.id === id);
           if (s) setSessionData(s);

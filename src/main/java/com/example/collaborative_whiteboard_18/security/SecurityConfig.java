@@ -58,8 +58,8 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         // Be specific in production, but for dev:
         config.setAllowedOriginPatterns(List.of("*"));
-        config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        config.setAllowedHeaders(List.of("*"));
+        config.setAllowedMethods(List.of("*"));
         config.setExposedHeaders(List.of("Authorization"));
         config.setAllowCredentials(true);
 

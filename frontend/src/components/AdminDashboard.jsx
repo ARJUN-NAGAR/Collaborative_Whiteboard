@@ -21,7 +21,7 @@ export default function AdminDashboard() {
   /* ── Fetch sessions ── */
   const fetchSessions = useCallback(async () => {
     try {
-      const data = await sessionAPI.getAllSessions();
+      const data = await sessionAPI.getAll();
       setSessions(data);
     } catch (err) {
       addToast("Failed to load sessions", "error");
@@ -39,7 +39,7 @@ export default function AdminDashboard() {
 
     setTogglingId(session.id);
     try {
-      await sessionAPI.updateSessionStatus(session.id, nextStatus);
+      await sessionAPI.toggle(session.id, nextStatus);
       setSessions((prev) =>
         prev.map((s) => (s.id === session.id ? { ...s, status: nextStatus } : s))
       );
@@ -58,7 +58,7 @@ export default function AdminDashboard() {
   const handleEnd = async (sessionId) => {
     if (!window.confirm("End this session permanently?")) return;
     try {
-      await sessionAPI.endSession(sessionId);
+      await sessionAPI.delete(sessionId);
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
       addToast("Session ended", "success");
     } catch {

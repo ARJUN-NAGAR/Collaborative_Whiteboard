@@ -3,6 +3,11 @@ import { auth } from './authUtils';
 const BASE = import.meta.env.VITE_API_URL || '/api';
 
 const handle = async (res) => {
+  if (res.status === 401 || res.status === 403) {
+    auth.clear();
+    window.location.href = '/login';
+    throw new Error('Session expired. Please log in again.');
+  }
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
   // Some endpoints return plain text
   const ct = res.headers.get('content-type') || '';
