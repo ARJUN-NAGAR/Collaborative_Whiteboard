@@ -18,18 +18,22 @@ import VideoOverlay from './VideoOverlay';
 import RecordingControls from './RecordingControls';
 import TemplateLibrary from './TemplateLibrary';
 import InviteModal from './InviteModal';
-import { Download, Hand, LayoutTemplate, LogOut, Moon, Sun } from 'lucide-react';
+import BoardSettings from './BoardSettings';
+import {
+  Download, Hand, LayoutTemplate, LogOut,
+  Moon, Sun, Settings, Bell, ChevronDown,
+} from 'lucide-react';
 
 function WhiteboardAppInner({ session, user, onLeave }) {
   const toast = useToast();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
-  
-  // Modals
-  const [showExport, setShowExport] = useState(false);
+
+  const [showExport,    setShowExport]    = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
-  const [showInvite, setShowInvite] = useState(false);
-  const [activePanel, setActivePanel] = useState(null);
+  const [showInvite,    setShowInvite]    = useState(false);
+  const [showSettings,  setShowSettings]  = useState(false);
+  const [activePanel,   setActivePanel]   = useState(null);
 
   const canvasRef = useRef(null);
 
@@ -48,7 +52,7 @@ function WhiteboardAppInner({ session, user, onLeave }) {
     sendJoin,
     sendLeave,
     publishElementCreate,
-    publishElementUpdate
+    publishElementUpdate,
   } = useCollaboration();
 
   const {
@@ -58,15 +62,13 @@ function WhiteboardAppInner({ session, user, onLeave }) {
     setSelectedIds,
     updateElement,
     addElement,
-    saveSnapshot
+    saveSnapshot,
   } = useWhiteboard();
+
   const { status: saveStatus, lastSavedAt } = useAutoSave({ sessionId: session.id, elements });
 
-  // Load initial session elements
   useEffect(() => {
-    if (session.elements) {
-      setElements(session.elements);
-    }
+    if (session.elements) setElements(session.elements);
   }, [session.elements, setElements]);
 
   const currentUserRole = session.participants?.find(
@@ -128,11 +130,25 @@ function WhiteboardAppInner({ session, user, onLeave }) {
         <div className="header-left">
           <div className="header-logo" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
             <div style={{ width: 24, height: 24, background: 'var(--accent)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                <path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z" />
+              </svg>
             </div>
             <span>Boardly</span>
           </div>
-          <div className="session-name" title={session.name}>{session.name}</div>
+
+          {/* Session name with settings trigger */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div className="session-name" title={session.name}>{session.name}</div>
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ padding: '3px 5px', opacity: .6 }}
+              onClick={() => setShowSettings(true)}
+              title="Board settings"
+            >
+              <ChevronDown size={13} />
+            </button>
+          </div>
         </div>
 
         <div className="header-center">
@@ -149,17 +165,37 @@ function WhiteboardAppInner({ session, user, onLeave }) {
                   ? 'Saved'
                   : 'Ready'}
           </div>
+
+          {/* Presence avatars */}
           <div style={{ display: 'flex', alignItems: 'center', marginLeft: 16 }}>
-             {allUsers.slice(0, 4).map((u, i) => (
-                <div key={u.id} style={{ width: 28, height: 28, borderRadius: '50%', background: u.color, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 600, border: '2px solid var(--bg-surface)', marginLeft: i > 0 ? -8 : 0, zIndex: 10 - i }} title={u.name}>
-                   {u.name.charAt(0).toUpperCase()}
-                </div>
-             ))}
-             {allUsers.length > 4 && (
-                <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--bg-hover)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 600, border: '2px solid var(--bg-surface)', marginLeft: -8 }}>
-                   +{allUsers.length - 4}
-                </div>
-             )}
+            {allUsers.slice(0, 4).map((u, i) => (
+              <div
+                key={u.id}
+                style={{
+                  width: 28, height: 28, borderRadius: '50%',
+                  background: u.color, color: 'white',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.7rem', fontWeight: 600,
+                  border: '2px solid var(--bg-surface)',
+                  marginLeft: i > 0 ? -8 : 0,
+                  zIndex: 10 - i,
+                }}
+                title={u.name}
+              >
+                {u.name.charAt(0).toUpperCase()}
+              </div>
+            ))}
+            {allUsers.length > 4 && (
+              <div style={{
+                width: 28, height: 28, borderRadius: '50%',
+                background: 'var(--bg-hover)', color: 'var(--text-secondary)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.7rem', fontWeight: 600,
+                border: '2px solid var(--bg-surface)', marginLeft: -8,
+              }}>
+                +{allUsers.length - 4}
+              </div>
+            )}
           </div>
         </div>
 
@@ -189,9 +225,22 @@ function WhiteboardAppInner({ session, user, onLeave }) {
             {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
           </button>
 
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => setShowSettings(true)}
+            title="Board settings"
+          >
+            <Settings size={15} />
+          </button>
+
           <div style={{ width: 1, height: 24, background: 'var(--border-subtle)', margin: '0 4px' }} />
 
-          <button className="btn btn-sm btn-ghost" onClick={handleLeave} style={{ color: 'var(--text-secondary)' }} title="Leave Board">
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={handleLeave}
+            style={{ color: 'var(--text-secondary)' }}
+            title="Leave Board"
+          >
             <LogOut size={16} />
           </button>
         </div>
@@ -225,9 +274,7 @@ function WhiteboardAppInner({ session, user, onLeave }) {
 
         <div className="canvas-container">
           <RecordingControls canvasRef={{ current: canvasRef.current?.getCanvas?.() }} />
-
           <WhiteboardCanvas ref={canvasRef} />
-          
           <Toolbar />
           <BottomToolbar />
         </div>
@@ -254,14 +301,35 @@ function WhiteboardAppInner({ session, user, onLeave }) {
         />
       </div>
 
+      {/* ─── Modals ──────────────────────────────────────── */}
       {showExport && (
-        <ExportModal isOpen={showExport} canvasRef={canvasRef} sessionName={session.name} elements={elements} onClose={() => setShowExport(false)} />
+        <ExportModal
+          isOpen={showExport}
+          canvasRef={canvasRef}
+          sessionName={session.name}
+          elements={elements}
+          onClose={() => setShowExport(false)}
+        />
       )}
       {showTemplates && (
-        <TemplateLibrary onClose={() => setShowTemplates(false)} onAddElement={handleInsertTemplateElement} userId={user.id} />
+        <TemplateLibrary
+          onClose={() => setShowTemplates(false)}
+          onAddElement={handleInsertTemplateElement}
+          userId={user.id}
+        />
       )}
       {showInvite && (
         <InviteModal session={session} onClose={() => setShowInvite(false)} />
+      )}
+      {showSettings && (
+        <BoardSettings
+          session={session}
+          onClose={() => setShowSettings(false)}
+          onUpdate={(updates) => {
+            // Persist name via API if needed
+            toast.success('Board settings saved');
+          }}
+        />
       )}
     </div>
   );

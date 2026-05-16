@@ -1,63 +1,131 @@
-import React from 'react';
-import { Undo2, Redo2, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { ZoomIn, ZoomOut, Maximize2, RotateCcw, RotateCw, Trash2, Copy, ChevronDown } from 'lucide-react';
 import { useWhiteboard } from '../contexts/WhiteboardContext';
-import { useCollaboration } from '../contexts/CollaborationContext';
 
+/**
+ * BottomToolbar
+ * Glassmorphism floating bar at the bottom-center of the canvas.
+ * Contains: zoom controls · undo/redo · clear board
+ */
 export default function BottomToolbar() {
-  const { canUndo, canRedo, undo, redo, zoom, setZoom, setPanOffset } = useWhiteboard();
-  const { publishElementsSync } = useCollaboration();
+  const {
+    zoom, setZoom,
+    panOffset, setPanOffset,
+    undo, redo, canUndo, canRedo,
+    elements, clearCanvas,
+  } = useWhiteboard();
 
-  const handleUndo = () => {
-    const next = undo();
-    if (next) publishElementsSync(next);
+  const [showZoomMenu, setShowZoomMenu] = useState(false);
+  const zoomPct = Math.round(zoom * 100);
+
+  const zoomTo = (val) => {
+    setZoom(val);
+    setPanOffset({ x: window.innerWidth / 2 - (window.innerWidth / 2) * val, y: window.innerHeight / 2 - (window.innerHeight / 2) * val });
+    setShowZoomMenu(false);
   };
 
-  const handleRedo = () => {
-    const next = redo();
-    if (next) publishElementsSync(next);
-  };
+  const ZOOM_PRESETS = [25, 50, 75, 100, 125, 150, 200];
 
-  const handleZoomIn = () => setZoom(z => Math.min(z * 1.2, 5));
-  const handleZoomOut = () => setZoom(z => Math.max(z / 1.2, 0.1));
-  const handleResetZoom = () => {
-    setZoom(1);
-    setPanOffset({ x: 0, y: 0 });
+  const handleClear = () => {
+    if (window.confirm('Clear all elements from the canvas?')) {
+      clearCanvas?.();
+    }
   };
 
   return (
-    <div className="bottom-toolbar" style={{
-      position: 'absolute', bottom: 16, left: 16,
-      display: 'flex', gap: '12px', alignItems: 'center',
-      background: 'var(--glass)', border: '1px solid var(--glass-border)',
-      borderRadius: 'var(--r-md)', padding: '6px 12px',
-      backdropFilter: 'blur(16px)', boxShadow: 'var(--shadow-md)',
-      zIndex: 100
-    }}>
-      <div style={{ display: 'flex', gap: '4px' }}>
-        <button className="tool-btn" onClick={handleUndo} disabled={!canUndo} title="Undo (Ctrl+Z)">
-          <Undo2 size={16} />
+    <div className="bottom-toolbar">
+
+      {/* Undo / Redo */}
+      <div className="btb-group">
+        <button
+          className={`btb-btn${canUndo ? '' : ' btb-btn--disabled'}`}
+          title="Undo (Ctrl+Z)"
+          onClick={undo}
+          disabled={!canUndo}
+        >
+          <RotateCcw size={14} />
         </button>
-        <button className="tool-btn" onClick={handleRedo} disabled={!canRedo} title="Redo (Ctrl+Y)">
-          <Redo2 size={16} />
-        </button>
-      </div>
-      
-      <div style={{ width: '1px', height: '24px', background: 'var(--border-subtle)' }} />
-      
-      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-        <button className="tool-btn" onClick={handleZoomOut} title="Zoom Out">
-          <ZoomOut size={16} />
-        </button>
-        <span style={{ fontSize: '0.75rem', fontWeight: 600, width: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-          {Math.round(zoom * 100)}%
-        </span>
-        <button className="tool-btn" onClick={handleZoomIn} title="Zoom In">
-          <ZoomIn size={16} />
-        </button>
-        <button className="tool-btn" onClick={handleResetZoom} title="Reset Zoom/Pan">
-          <Maximize size={14} />
+        <button
+          className={`btb-btn${canRedo ? '' : ' btb-btn--disabled'}`}
+          title="Redo (Ctrl+Y)"
+          onClick={redo}
+          disabled={!canRedo}
+        >
+          <RotateCw size={14} />
         </button>
       </div>
+
+      <div className="btb-sep" />
+
+      {/* Zoom */}
+      <div className="btb-group" style={{ position: 'relative' }}>
+        <button
+          className="btb-btn"
+          title="Zoom out"
+          onClick={() => setZoom(z => Math.max(z / 1.25, 0.1))}
+        >
+          <ZoomOut size={14} />
+        </button>
+
+        <button
+          className="btb-btn btb-zoom-pct"
+          title="Zoom level — click to pick preset"
+          onClick={() => setShowZoomMenu(s => !s)}
+        >
+          {zoomPct}%
+          <ChevronDown size={10} style={{ marginLeft: 2 }} />
+        </button>
+
+        <button
+          className="btb-btn"
+          title="Zoom in"
+          onClick={() => setZoom(z => Math.min(z * 1.25, 5))}
+        >
+          <ZoomIn size={14} />
+        </button>
+
+        <button
+          className="btb-btn"
+          title="Reset view"
+          onClick={() => { setZoom(1); setPanOffset({ x: 0, y: 0 }); }}
+        >
+          <Maximize2 size={14} />
+        </button>
+
+        {/* Zoom dropdown */}
+        {showZoomMenu && (
+          <div className="btb-dropdown">
+            {ZOOM_PRESETS.map(p => (
+              <button
+                key={p}
+                className={`btb-dropdown-item${zoomPct === p ? ' active' : ''}`}
+                onClick={() => zoomTo(p / 100)}
+              >
+                {p}%
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="btb-sep" />
+
+      {/* Element count */}
+      <div className="btb-info">
+        {elements.length} element{elements.length !== 1 ? 's' : ''}
+      </div>
+
+      <div className="btb-sep" />
+
+      {/* Clear board */}
+      <button
+        className="btb-btn btb-btn--danger"
+        title="Clear all elements"
+        onClick={handleClear}
+      >
+        <Trash2 size={14} />
+      </button>
+
     </div>
   );
 }

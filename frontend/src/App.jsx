@@ -5,10 +5,13 @@ import { ToastProvider, useToast } from './components/ToastSystem';
 import { auth } from './services/authUtils';
 import { sessionAPI } from './services/api';
 
-import LoginPage      from './components/LoginPage';
-import LandingPage    from './components/LandingPage';
-import WhiteboardApp  from './components/WhiteboardApp';
-import AdminDashboard from './components/AdminDashboard';
+import LoginPage       from './components/LoginPage';
+import LandingPage     from './components/LandingPage';
+import WhiteboardApp   from './components/WhiteboardApp';
+import AdminDashboard  from './components/AdminDashboard';
+import PricingPage     from './components/PricingPage';
+import ProfileSettings from './components/ProfileSettings';
+import NotificationsPage from './components/NotificationsPage';
 
 const USER_COLORS = ['#8b5cf6','#06b6d4','#ec4899','#10b981','#f59e0b','#ef4444','#6366f1','#14b8a6'];
 const randomColor  = () => USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
@@ -39,18 +42,15 @@ function MainApp() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const shareCode = params.get('shareCode');
-    
+
     if (shareCode) {
-      // Clean URL
       window.history.replaceState({}, document.title, window.location.pathname);
-      
       if (!loggedInUser) {
         sessionStorage.setItem('pendingShareCode', shareCode);
         toast.info('Please sign in to join the board');
         navigate('/login');
         return;
       }
-      
       joinWithCode(shareCode, String(loggedInUser.id));
     }
   }, [location.search, loggedInUser, navigate, toast]);
@@ -83,50 +83,79 @@ function MainApp() {
 
   return (
     <Routes>
-      <Route 
-        path="/" 
+      {/* Public */}
+      <Route path="/"
+        element={<LandingPage currentUser={loggedInUser} onLogout={handleLogout} />}
+      />
+      <Route path="/pricing"
+        element={<PricingPage currentUser={loggedInUser} />}
+      />
+
+      {/* Auth */}
+      <Route path="/login"
         element={
-          <LandingPage 
-            currentUser={loggedInUser} 
-            onLogout={handleLogout} 
+          <LoginPage
+            onAuthSuccess={(u) => {
+              setLoggedInUser(buildUser(u));
+              navigate('/');
+            }}
           />
-        } 
+        }
       />
-      <Route 
-        path="/login" 
+      <Route path="/register"
         element={
-          <LoginPage 
-            onAuthSuccess={(u) => { 
-              setLoggedInUser(buildUser(u)); 
-              navigate('/'); 
-            }} 
+          <LoginPage
+            onAuthSuccess={(u) => {
+              setLoggedInUser(buildUser(u));
+              navigate('/');
+            }}
           />
-        } 
+        }
       />
-      <Route 
-        path="/register" 
+
+      {/* Dashboard */}
+      <Route path="/dashboard"
+        element={loggedInUser ? <AdminDashboard /> : <LoginPage onAuthSuccess={(u) => { setLoggedInUser(buildUser(u)); navigate('/dashboard'); }} />}
+      />
+
+      {/* Settings */}
+      <Route path="/settings"
         element={
-          <LoginPage 
-            onAuthSuccess={(u) => { 
-              setLoggedInUser(buildUser(u)); 
-              navigate('/'); 
-            }} 
+          loggedInUser
+            ? <ProfileSettings currentUser={loggedInUser} onLogout={handleLogout} />
+            : <LoginPage onAuthSuccess={(u) => { setLoggedInUser(buildUser(u)); navigate('/settings'); }} />
+        }
+      />
+      <Route path="/settings/:section"
+        element={
+          loggedInUser
+            ? <ProfileSettings currentUser={loggedInUser} onLogout={handleLogout} />
+            : <LoginPage onAuthSuccess={(u) => { setLoggedInUser(buildUser(u)); navigate('/settings'); }} />
+        }
+      />
+
+      {/* Notifications */}
+      <Route path="/notifications"
+        element={
+          loggedInUser
+            ? <NotificationsPage currentUser={loggedInUser} />
+            : <LoginPage onAuthSuccess={(u) => { setLoggedInUser(buildUser(u)); navigate('/notifications'); }} />
+        }
+      />
+
+      {/* Board */}
+      <Route path="/board/:id"
+        element={
+          <BoardRoute
+            loggedInUser={loggedInUser}
+            setLoggedInUser={setLoggedInUser}
           />
-        } 
-      />
-      <Route 
-        path="/dashboard" 
-        element={loggedInUser ? <AdminDashboard /> : <LoginPage />} 
-      />
-      <Route 
-        path="/board/:id" 
-        element={<BoardRoute loggedInUser={loggedInUser} setLoggedInUser={setLoggedInUser} />} 
+        }
       />
     </Routes>
   );
 }
 
-// Wrapper for WhiteboardApp to extract ID and Session
 function BoardRoute({ loggedInUser, setLoggedInUser }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -145,16 +174,20 @@ function BoardRoute({ loggedInUser, setLoggedInUser }) {
   }, [id, sessionData, loggedInUser, navigate]);
 
   if (!loggedInUser) {
-    return <LoginPage onAuthSuccess={(u) => setLoggedInUser(buildUser(u))} />;
+    return (
+      <LoginPage
+        onAuthSuccess={(u) => setLoggedInUser(buildUser(u))}
+      />
+    );
   }
 
   if (!sessionData) return null;
 
   return (
-    <WhiteboardApp 
-      session={sessionData} 
-      user={loggedInUser} 
-      onLeave={() => navigate('/')} 
+    <WhiteboardApp
+      session={sessionData}
+      user={loggedInUser}
+      onLeave={() => navigate('/')}
     />
   );
 }
