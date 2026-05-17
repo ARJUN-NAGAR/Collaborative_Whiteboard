@@ -3,6 +3,7 @@ package com.example.collaborative_whiteboard_18.service;
 import com.example.collaborative_whiteboard_18.model.Participant;
 import com.example.collaborative_whiteboard_18.model.WhiteboardSession;
 import com.example.collaborative_whiteboard_18.repository.WhiteboardSessionRepository;
+import com.mongodb.BasicDBObject;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -21,15 +22,14 @@ public class SessionService {
     private final WhiteboardSessionRepository sessionRepository;
     private final MongoTemplate mongoTemplate;
 
-    // ✅ Create Session
+    // ── Create ───────────────────────────────────────────────────────────────
     public WhiteboardSession createSession(String name, String ownerName, String ownerId) {
-
         WhiteboardSession session = WhiteboardSession.builder()
                 .name(name)
                 .ownerName(ownerName)
                 .createdBy(ownerId)
                 .createdAt(LocalDateTime.now())
-                .active(true)
+                .status("ACTIVE")
                 .shareCode(UUID.randomUUID().toString().substring(0, 6).toUpperCase())
                 .participants(new ArrayList<>())
                 .elements(new ArrayList<>())
@@ -42,27 +42,23 @@ public class SessionService {
                         .isOnline(true)
                         .build()
         );
-
         return sessionRepository.save(session);
     }
 
-    // ✅ Get All Sessions
+    // ── Read ─────────────────────────────────────────────────────────────────
     public List<WhiteboardSession> getAllSessions() {
         return sessionRepository.findAll();
     }
 
-    // ✅ Get Active Sessions
     public List<WhiteboardSession> getActiveSessions() {
-        // BUG FIX: was findByIsActiveTrue() — field renamed to "active" so method is findByActiveTrue()
-        return sessionRepository.findByActiveTrue();
+        return sessionRepository.findByStatus("ACTIVE");
     }
 
-    // ✅ Get Session by ID
     public Optional<WhiteboardSession> getSession(String sessionId) {
         return sessionRepository.findById(sessionId);
     }
 
-    // ✅ Update Canvas Elements (Delta Sync / Overwrite)
+    // ── Element persistence ───────────────────────────────────────────────────
     public WhiteboardSession updateElements(String sessionId, List<Map<String, Object>> elements) {
         WhiteboardSession session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found: " + sessionId));
@@ -70,43 +66,57 @@ public class SessionService {
         return sessionRepository.save(session);
     }
 
-    // ✅ Upsert a single Canvas Element (Delta Sync)
+    /** Atomic upsert of a single element (delta sync) */
     public void upsertElement(String sessionId, Map<String, Object> element) {
         String elementId = (String) element.get("id");
         if (elementId == null) return;
-        
-        Query query = new Query(Criteria.where("id").is(sessionId).and("elements.id").is(elementId));
-        Update update = new Update().set("elements.$", element);
-        UpdateResult result = mongoTemplate.updateFirst(query, update, WhiteboardSession.class);
-        
+
+        Query matchExisting = new Query(
+                Criteria.where("id").is(sessionId).and("elements.id").is(elementId));
+        Update setInPlace = new Update().set("elements.$", element);
+        UpdateResult result = mongoTemplate.updateFirst(matchExisting, setInPlace, WhiteboardSession.class);
+
         if (result.getModifiedCount() == 0) {
-            // Element not found, push it
-            Query pushQuery = new Query(Criteria.where("id").is(sessionId));
-            Update pushUpdate = new Update().push("elements", element);
-            mongoTemplate.updateFirst(pushQuery, pushUpdate, WhiteboardSession.class);
+            Query matchSession = new Query(Criteria.where("id").is(sessionId));
+            Update pushNew = new Update().push("elements", element);
+            mongoTemplate.updateFirst(matchSession, pushNew, WhiteboardSession.class);
         }
     }
 
-    // ✅ Delete Session
+    /** Remove one or more elements by id without replacing the full board state. */
+    public void deleteElements(String sessionId, List<String> elementIds) {
+        if (elementIds == null || elementIds.isEmpty()) return;
+
+        Query matchSession = new Query(Criteria.where("id").is(sessionId));
+        Update pullDeleted = new Update().pull("elements",
+                new BasicDBObject("id", new BasicDBObject("$in", elementIds)));
+        mongoTemplate.updateFirst(matchSession, pullDeleted, WhiteboardSession.class);
+    }
+
+    // ── Delete ───────────────────────────────────────────────────────────────
     public void deleteSession(String sessionId) {
         sessionRepository.deleteById(sessionId);
     }
 
-    // ✅ Toggle Active/Inactive (Admin Dashboard)
-    public WhiteboardSession toggleSession(String sessionId, boolean active) {
+    // ── Status / Toggle ──────────────────────────────────────────────────────
+    /**
+     * Set a lifecycle status. Accepts any value from the frontend:
+     * ACTIVE, INACTIVE, PAUSED, ENDED, ARCHIVED, etc.
+     */
+    public WhiteboardSession toggleSession(String sessionId, String newStatus) {
         WhiteboardSession session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found: " + sessionId));
-        session.setActive(active);
+        session.setStatus(newStatus);
         return sessionRepository.save(session);
     }
 
-    // ✅ Analytics
+    // ── Analytics ────────────────────────────────────────────────────────────
     public Map<String, Object> getAnalytics() {
         Map<String, Object> data = new HashMap<>();
-        data.put("totalSessions", sessionRepository.count());
-        data.put("activeSessions", sessionRepository.countByActiveTrue());
-        // Count unique online participants across active sessions
-        long onlineUsers = sessionRepository.findByActiveTrue().stream()
+        data.put("totalSessions",   sessionRepository.count());
+        data.put("activeSessions",  sessionRepository.countByStatus("ACTIVE"));
+
+        long onlineUsers = sessionRepository.findByStatus("ACTIVE").stream()
                 .flatMap(s -> s.getParticipants().stream())
                 .filter(p -> Boolean.TRUE.equals(p.getIsOnline()))
                 .map(Participant::getUserId)
@@ -116,18 +126,16 @@ public class SessionService {
         return data;
     }
 
-    // ✅ Join Session by share code
+    // ── Participation ─────────────────────────────────────────────────────────
     public Optional<WhiteboardSession> joinSession(String shareCode, String userId) {
+        Optional<WhiteboardSession> opt = sessionRepository.findByShareCode(shareCode);
+        if (opt.isEmpty()) return Optional.empty();
 
-        Optional<WhiteboardSession> optionalSession = sessionRepository.findByShareCode(shareCode);
-        if (optionalSession.isEmpty()) return Optional.empty();
-
-        WhiteboardSession session = optionalSession.get();
-
-        boolean exists = session.getParticipants().stream()
+        WhiteboardSession session = opt.get();
+        boolean alreadyIn = session.getParticipants().stream()
                 .anyMatch(p -> p.getUserId().equals(userId));
 
-        if (!exists) {
+        if (!alreadyIn) {
             session.getParticipants().add(
                     Participant.builder()
                             .userId(userId)
@@ -136,28 +144,20 @@ public class SessionService {
                             .build()
             );
         }
-
         return Optional.of(sessionRepository.save(session));
     }
 
-    // 🔒 Role check — used by DrawingController
-    public boolean canEdit(String sessionId, String userId) {
-        WhiteboardSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new RuntimeException("Session not found"));
-        return session.getParticipants().stream()
-                .anyMatch(p -> p.getUserId().equals(userId) &&
-                        (p.getRole().equals("OWNER") || p.getRole().equals("EDITOR")));
-    }
-
-    // 🛑 Remove User
-    public void removeUser(String sessionId, String userId) {
+    public void leaveSession(String sessionId, String userId) {
         WhiteboardSession session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
         session.getParticipants().removeIf(p -> p.getUserId().equals(userId));
         sessionRepository.save(session);
     }
 
-    // 🔁 Update Role
+    public void removeUser(String sessionId, String userId) {
+        leaveSession(sessionId, userId);
+    }
+
     public void updateRole(String sessionId, String userId, String role) {
         WhiteboardSession session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
@@ -167,19 +167,20 @@ public class SessionService {
         sessionRepository.save(session);
     }
 
-    // 🔒 Lock (deactivate) Session
     public void lockSession(String sessionId) {
-        WhiteboardSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new RuntimeException("Session not found"));
-        session.setActive(false);
-        sessionRepository.save(session);
+        toggleSession(sessionId, "INACTIVE");
     }
 
-    // 🚪 Leave Session
-    public void leaveSession(String sessionId, String userId) {
+    // ── RBAC helper ──────────────────────────────────────────────────────────
+    /**
+     * Returns true if the user is allowed to draw (OWNER, ADMIN, EDITOR, PRESENTER).
+     * Viewers and Participants are read-only.
+     */
+    public boolean canEdit(String sessionId, String userId) {
         WhiteboardSession session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
-        session.getParticipants().removeIf(p -> p.getUserId().equals(userId));
-        sessionRepository.save(session);
+        return session.getParticipants().stream()
+                .anyMatch(p -> p.getUserId().equals(userId) &&
+                        Set.of("OWNER", "ADMIN", "EDITOR", "PRESENTER").contains(p.getRole()));
     }
 }

@@ -10,8 +10,8 @@ public interface WhiteboardSessionRepository extends MongoRepository<WhiteboardS
 
     Optional<WhiteboardSession> findByShareCode(String shareCode);
 
-    // BUG FIX: field is now "active" (not "isActive") so method is findByActiveTrue
-    List<WhiteboardSession> findByActiveTrue();
+    /** Find by status string (ACTIVE, PAUSED, ENDED, etc.) */
+    List<WhiteboardSession> findByStatus(String status);
 
-    long countByActiveTrue();
+    long countByStatus(String status);
 }

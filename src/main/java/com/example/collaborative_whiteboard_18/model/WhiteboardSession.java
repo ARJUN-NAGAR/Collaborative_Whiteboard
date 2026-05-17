@@ -18,19 +18,34 @@ public class WhiteboardSession {
     @Id
     private String id;
 
-    private String name;          // board display name (frontend uses "name")
+    private String name;        // board display name
 
-    private String ownerName;     // display name of owner
+    private String ownerName;   // display name of owner
 
-    private String createdBy;     // userId of owner (a.k.a. ownerId from frontend)
+    private String createdBy;   // userId of owner
 
-    private String shareCode;     // short join code
+    private String shareCode;   // short join code
 
-    private boolean active;       // NOTE: field named "active" → JSON key "active" ✓
+    /**
+     * Session lifecycle state.
+     * Values: CREATED, ACTIVE, PAUSED, INACTIVE, ENDED, ARCHIVED
+     *
+     * NOTE: We also expose a synthetic `active` getter for backward compat
+     * with any frontend code that still reads session.active.
+     */
+    private String status;
 
     private LocalDateTime createdAt;
 
     private List<Participant> participants;
 
-    private List<Map<String, Object>> elements;  // persisted canvas state (delta-sync)
+    private List<Map<String, Object>> elements;  // persisted canvas elements
+
+    /**
+     * Convenience boolean for frontend and repository queries.
+     * Returns true when status is ACTIVE or CREATED.
+     */
+    public boolean isActive() {
+        return "ACTIVE".equals(status) || "CREATED".equals(status);
+    }
 }
