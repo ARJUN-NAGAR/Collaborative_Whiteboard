@@ -3,30 +3,44 @@ import { useNavigate } from "react-router-dom";
 import { useTheme } from "../contexts/ThemeContext";
 import { useToast } from "../components/ToastSystem";
 import { sessionAPI } from "../services/api";
-import { ChevronDown, ArrowRight, Zap, Users, Shield, Star } from "lucide-react";
-
-const COMPANY_LOGOS = [
-  { name: "Google", svg: <svg viewBox="0 0 74 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{height:18}}><text y="18" fontFamily="sans-serif" fontWeight="700" fontSize="16" fill="currentColor">Google</text></svg> },
-  { name: "Microsoft", svg: <svg viewBox="0 0 90 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{height:18}}><text y="18" fontFamily="sans-serif" fontWeight="700" fontSize="16" fill="currentColor">Microsoft</text></svg> },
-  { name: "Notion", svg: <svg viewBox="0 0 60 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{height:18}}><text y="18" fontFamily="sans-serif" fontWeight="700" fontSize="16" fill="currentColor">Notion</text></svg> },
-  { name: "Airbnb", svg: <svg viewBox="0 0 58 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{height:18}}><text y="18" fontFamily="sans-serif" fontWeight="700" fontSize="16" fill="currentColor">Airbnb</text></svg> },
-  { name: "Spotify", svg: <svg viewBox="0 0 64 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{height:18}}><text y="18" fontFamily="sans-serif" fontWeight="700" fontSize="16" fill="currentColor">Spotify</text></svg> },
-];
+import { ChevronDown, ArrowRight, Zap, Users, Shield, Star, Menu, X } from "lucide-react";
 
 const FEATURES = [
-  { icon: <Zap size={20} />, title: "Real-time collaboration", desc: "Work together seamlessly with your entire team on an infinite canvas." },
-  { icon: <Users size={20} />, title: "Team workspaces", desc: "Organize boards by projects and invite teammates with custom permissions." },
-  { icon: <Shield size={20} />, title: "Enterprise-ready", desc: "SSO, audit logs, and advanced security controls for your organization." },
-  { icon: <Star size={20} />, title: "500+ Templates", desc: "Jump-start any project with professionally designed templates." },
+  {
+    icon: <Zap size={20} />,
+    title: "Real-time collaboration",
+    desc: "Every stroke, shape and sticky note syncs instantly across your entire team on an infinite canvas.",
+  },
+  {
+    icon: <Users size={20} />,
+    title: "Team workspaces",
+    desc: "Organize boards by projects, invite teammates, and assign roles with granular permissions.",
+  },
+  {
+    icon: <Shield size={20} />,
+    title: "Enterprise-ready",
+    desc: "SSO, audit logs, role-based access controls, and end-to-end encryption built in from day one.",
+  },
+  {
+    icon: <Star size={20} />,
+    title: "500+ Templates",
+    desc: "Jump-start any project with professionally designed Kanban boards, flowcharts, and wireframes.",
+  },
 ];
 
-// Mini whiteboard preview stickies
 const STICKIES = [
-  { text: "User Research", color: "#fde68a", x: 30, y: 40, rotate: -2 },
-  { text: "Competitive Analysis", color: "#bbf7d0", x: 200, y: 25, rotate: 1.5 },
-  { text: "Wireframes", color: "#bfdbfe", x: 370, y: 45, rotate: -1 },
-  { text: "User Flow", color: "#fde68a", x: 130, y: 140, rotate: 2 },
-  { text: "Ideas", color: "#e9d5ff", x: 300, y: 130, rotate: -1.5 },
+  { text: "User Research", color: "#FDE68A", x: 28, y: 38, rotate: -2 },
+  { text: "Competitive Analysis", color: "#BBF7D0", x: 198, y: 24, rotate: 1.5 },
+  { text: "Wireframes", color: "#BFDBFE", x: 370, y: 44, rotate: -1 },
+  { text: "User Flow", color: "#FDE68A", x: 128, y: 140, rotate: 2 },
+  { text: "Ideas ✦", color: "#E9D5FF", x: 300, y: 130, rotate: -1.5 },
+];
+
+const METRICS = [
+  { value: "50k+", label: "Teams" },
+  { value: "2M+", label: "Boards created" },
+  { value: "99.9%", label: "Uptime" },
+  { value: "<50ms", label: "Sync latency" },
 ];
 
 export default function LandingPage({ currentUser, onLogout }) {
@@ -41,7 +55,7 @@ export default function LandingPage({ currentUser, onLogout }) {
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!createName.trim()) { addToast("Please enter a board name", "error"); return; }
+    if (!createName.trim()) { addToast("Enter a board name", "error"); return; }
     setLoading("create");
     try {
       const session = await sessionAPI.create({
@@ -56,7 +70,7 @@ export default function LandingPage({ currentUser, onLogout }) {
 
   const handleJoin = async (e) => {
     e.preventDefault();
-    if (!joinId.trim()) { addToast("Please enter a Session ID", "error"); return; }
+    if (!joinId.trim()) { addToast("Enter a Session ID", "error"); return; }
     setLoading("join");
     try {
       const session = await sessionAPI.getById(joinId.trim());
@@ -69,86 +83,130 @@ export default function LandingPage({ currentUser, onLogout }) {
   return (
     <div className="lp-root">
 
-      {/* ── Navbar ── */}
+      {/* ── Navbar ─────────────────────────────────────── */}
       <nav className="lp-nav">
         <div className="lp-nav-inner">
-          {/* Logo */}
           <div className="lp-logo" onClick={() => navigate("/")}>
             <div className="lp-logo-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-                <path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#0A0A14">
+                <path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z" />
               </svg>
             </div>
-            <span className="lp-logo-text">Boardly</span>
+            <span className="lp-logo-text">CollabBoard</span>
           </div>
 
-          {/* Desktop nav links */}
           <div className="lp-nav-links">
-            {["Product", "Solutions", "Resources", "Pricing"].map(link => (
-              <button key={link} className="lp-nav-link"
-                onClick={() => link === "Pricing" && navigate("/pricing")}>
-                {link}
-                {["Product", "Solutions", "Resources"].includes(link) && <ChevronDown size={12} />}
+            {["Product", "Solutions", "Resources"].map((link) => (
+              <button key={link} className="lp-nav-link">
+                {link} <ChevronDown size={12} />
               </button>
             ))}
+            <button className="lp-nav-link" onClick={() => navigate("/pricing")}>
+              Pricing
+            </button>
           </div>
 
-          {/* Auth actions */}
           <div className="lp-nav-actions">
-            <button className="lp-btn-ghost" onClick={toggleTheme} title="Toggle theme">
-              {theme === "dark" ? "☀️" : "🌙"}
+            <button className="lp-btn-ghost" onClick={toggleTheme} style={{ fontSize: "1rem", padding: "6px 10px" }}>
+              {theme === "dark" ? "☀" : "⏾"}
             </button>
             {currentUser ? (
               <>
                 <span className="lp-nav-user">{currentUser.name}</span>
-                <button className="lp-btn-ghost" onClick={() => navigate("/dashboard")}>Dashboard</button>
-                <button className="lp-btn-ghost" onClick={onLogout}>Log out</button>
+                <button className="lp-btn-ghost" onClick={() => navigate("/dashboard")}>
+                  Dashboard
+                </button>
+                <button className="lp-btn-ghost" onClick={onLogout}>
+                  Sign out
+                </button>
               </>
             ) : (
               <>
-                <button className="lp-btn-ghost" onClick={() => navigate("/login")}>Log in</button>
-                <button className="lp-btn-primary" onClick={() => navigate("/register")}>Sign up</button>
+                <button className="lp-btn-ghost" onClick={() => navigate("/login")}>
+                  Sign in
+                </button>
+                <button className="lp-btn-primary" onClick={() => navigate("/register")}>
+                  Get started free
+                </button>
               </>
             )}
           </div>
+
+          {/* Mobile menu toggle */}
+          <button
+            className="lp-btn-ghost hidden-desktop"
+            style={{ marginLeft: "auto" }}
+            onClick={() => setMobileMenuOpen((s) => !s)}
+          >
+            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
+
+        {mobileMenuOpen && (
+          <div style={{ borderTop: "1px solid var(--border-subtle)", padding: "12px 24px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <button className="lp-btn-ghost" onClick={() => navigate("/pricing")}>Pricing</button>
+            {currentUser ? (
+              <>
+                <button className="lp-btn-ghost" onClick={() => navigate("/dashboard")}>Dashboard</button>
+                <button className="lp-btn-ghost" onClick={onLogout}>Sign out</button>
+              </>
+            ) : (
+              <>
+                <button className="lp-btn-ghost" onClick={() => navigate("/login")}>Sign in</button>
+                <button className="lp-btn-primary" onClick={() => navigate("/register")}>Get started</button>
+              </>
+            )}
+          </div>
+        )}
       </nav>
 
-      {/* ── Hero ── */}
+      {/* ── Hero ───────────────────────────────────────── */}
       <section className="lp-hero">
         <div className="lp-hero-content">
+
+          {/* Badge */}
           <div className="lp-hero-badge">
             <span className="lp-badge-dot" />
-            New: AI-powered diagram generation →
+            Real-time collaboration — now with AI assist →
           </div>
 
+          {/* Headline */}
           <h1 className="lp-hero-title">
-            Ideate. Collaborate.<br/>
-            <span className="lp-hero-gradient">Create</span> without limits.
+            Where great teams<br />
+            <span className="lp-hero-gradient">build together</span>
           </h1>
 
           <p className="lp-hero-sub">
-            Boardly is the visual workspace for teams to brainstorm,<br/>
-            plan, and turn ideas into action — together.
+            CollabBoard is the infinite canvas your team has been waiting for.
+            Draw, plan, and ship — in real time, together.
           </p>
 
+          {/* CTAs */}
           {currentUser ? (
             <div className="lp-hero-forms">
               <div className="lp-form-card">
-                <div className="lp-form-label">Start a new session</div>
+                <div className="lp-form-label">Create a new board</div>
                 <form onSubmit={handleCreate} className="lp-form-row">
-                  <input className="lp-input" placeholder="Board name..." value={createName}
-                    onChange={e => setCreateName(e.target.value)} />
+                  <input
+                    className="lp-input"
+                    placeholder="Board name…"
+                    value={createName}
+                    onChange={(e) => setCreateName(e.target.value)}
+                  />
                   <button type="submit" className="lp-btn-primary" disabled={loading === "create"}>
                     {loading === "create" ? "Creating…" : "Create"}
                   </button>
                 </form>
               </div>
               <div className="lp-form-card">
-                <div className="lp-form-label">Join existing session</div>
+                <div className="lp-form-label">Join existing board</div>
                 <form onSubmit={handleJoin} className="lp-form-row">
-                  <input className="lp-input" placeholder="Session ID..." value={joinId}
-                    onChange={e => setJoinId(e.target.value)} />
+                  <input
+                    className="lp-input"
+                    placeholder="Session ID or share code…"
+                    value={joinId}
+                    onChange={(e) => setJoinId(e.target.value)}
+                  />
                   <button type="submit" className="lp-btn-outline" disabled={loading === "join"}>
                     {loading === "join" ? "Joining…" : "Join"}
                   </button>
@@ -157,23 +215,35 @@ export default function LandingPage({ currentUser, onLogout }) {
             </div>
           ) : (
             <div className="lp-hero-ctas">
-              <button className="lp-btn-primary lp-btn-lg" onClick={() => navigate("/register")}>
-                Get started free
+              <button
+                className="lp-btn-primary lp-btn-lg"
+                onClick={() => navigate("/register")}
+                style={{ display: "flex", alignItems: "center", gap: 8 }}
+              >
+                Start for free
+                <ArrowRight size={16} />
               </button>
-              <button className="lp-btn-ghost lp-btn-lg" onClick={() => navigate("/register")}>
-                See how it works <ArrowRight size={15} />
+              <button
+                className="lp-btn-outline lp-btn-lg"
+                onClick={() => navigate("/pricing")}
+              >
+                View pricing
               </button>
             </div>
           )}
 
-          {/* Trust strip */}
-          <div className="lp-trust">
-            <div className="lp-trust-label">Trusted by teams at</div>
-            <div className="lp-trust-logos">
-              {COMPANY_LOGOS.map(c => (
-                <span key={c.name} className="lp-trust-logo">{c.name}</span>
-              ))}
-            </div>
+          {/* Metrics strip */}
+          <div style={{ display: "flex", gap: "3rem", alignItems: "center", justifyContent: "center", flexWrap: "wrap", marginTop: currentUser ? "1.5rem" : 0, opacity: 0.7 }}>
+            {METRICS.map((m) => (
+              <div key={m.label} style={{ textAlign: "center" }}>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: "1.4rem", fontWeight: 800, color: "var(--lime)", letterSpacing: "-0.04em", lineHeight: 1 }}>
+                  {m.value}
+                </div>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 3, fontWeight: 600 }}>
+                  {m.label}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -183,49 +253,74 @@ export default function LandingPage({ currentUser, onLogout }) {
             <div className="lp-chrome-dots">
               <span /><span /><span />
             </div>
-            <span className="lp-chrome-title">Q3 Product Planning</span>
+            <span className="lp-chrome-title">Q3 Product Planning · 3 collaborators</span>
             <div className="lp-chrome-avatars">
-              {["#8b5cf6","#06b6d4","#f59e0b"].map((c,i) => (
-                <div key={i} style={{width:22,height:22,borderRadius:"50%",background:c,border:"2px solid #fff",marginLeft:i?-6:0,display:"inline-block"}} />
+              {["#C4FF33", "#3EA6FF", "#FF5E42"].map((c, i) => (
+                <div
+                  key={i}
+                  style={{
+                    width: 22, height: 22, borderRadius: "50%", background: c,
+                    border: "2px solid var(--bg-surface)",
+                    marginLeft: i ? -6 : 0, display: "inline-block",
+                  }}
+                />
               ))}
             </div>
           </div>
           <div className="lp-preview-canvas">
-            {/* Grid dots */}
             <div className="lp-canvas-grid" />
-            {/* Arrow/connectors */}
-            <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"}}>
-              <path d="M 115 65 Q 160 80 190 155" stroke="#d1d5db" strokeWidth="1.5" fill="none" strokeDasharray="4,3"/>
-              <path d="M 285 55 Q 320 90 315 145" stroke="#d1d5db" strokeWidth="1.5" fill="none" strokeDasharray="4,3"/>
+            {/* Connectors */}
+            <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+              <path d="M 115 65 Q 160 80 190 155" stroke="rgba(196,255,51,0.25)" strokeWidth="1.5" fill="none" strokeDasharray="4,3" />
+              <path d="M 285 55 Q 320 90 315 145" stroke="rgba(62,166,255,0.25)" strokeWidth="1.5" fill="none" strokeDasharray="4,3" />
             </svg>
             {/* Stickies */}
             {STICKIES.map((s, i) => (
-              <div key={i} className="lp-sticky" style={{
-                background: s.color,
-                left: s.x, top: s.y,
-                transform: `rotate(${s.rotate}deg)`,
-              }}>
+              <div
+                key={i}
+                className="lp-sticky"
+                style={{ background: s.color, left: s.x, top: s.y, transform: `rotate(${s.rotate}deg)` }}
+              >
                 {s.text}
               </div>
             ))}
-            {/* Cursor */}
-            <div className="lp-cursor" style={{left:310,top:95}}>
-              <svg width="18" height="18" viewBox="0 0 24 24"><path d="M5 3l14 9-7 2-2 7z" fill="#6366f1" stroke="white" strokeWidth="1.5"/></svg>
-              <span className="lp-cursor-label" style={{background:"#6366f1"}}>Sarah</span>
+            {/* Cursors */}
+            <div className="lp-cursor" style={{ left: 316, top: 92 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24">
+                <path d="M5 3l14 9-7 2-2 7z" fill="#C4FF33" stroke="rgba(0,0,0,0.4)" strokeWidth="1.5" />
+              </svg>
+              <span className="lp-cursor-label" style={{ background: "#3A5500" }}>Sarah</span>
             </div>
-            <div className="lp-cursor" style={{left:180,top:50}}>
-              <svg width="18" height="18" viewBox="0 0 24 24"><path d="M5 3l14 9-7 2-2 7z" fill="#06b6d4" stroke="white" strokeWidth="1.5"/></svg>
-              <span className="lp-cursor-label" style={{background:"#06b6d4"}}>Alex</span>
+            <div className="lp-cursor" style={{ left: 184, top: 48 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24">
+                <path d="M5 3l14 9-7 2-2 7z" fill="#3EA6FF" stroke="rgba(0,0,0,0.4)" strokeWidth="1.5" />
+              </svg>
+              <span className="lp-cursor-label" style={{ background: "#0D3A6B" }}>Alex</span>
+            </div>
+
+            {/* Live indicator */}
+            <div style={{
+              position: "absolute", bottom: 14, right: 14,
+              display: "flex", alignItems: "center", gap: 6,
+              background: "var(--glass)", border: "1px solid var(--glass-border)",
+              borderRadius: "var(--r-full)", padding: "4px 10px",
+              fontSize: "0.65rem", fontWeight: 700, color: "var(--green)",
+              backdropFilter: "blur(8px)",
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--green)", animation: "pulse 2s infinite" }} />
+              LIVE
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── Features ── */}
+      {/* ── Features ───────────────────────────────────── */}
       <section className="lp-features">
         <div className="lp-section-inner">
           <h2 className="lp-section-title">Everything your team needs</h2>
-          <p className="lp-section-sub">A complete workspace for visual collaboration — from brainstorming to delivery.</p>
+          <p className="lp-section-sub">
+            A complete workspace for visual collaboration — from first idea to final delivery.
+          </p>
           <div className="lp-features-grid">
             {FEATURES.map((f, i) => (
               <div key={i} className="lp-feature-card">
@@ -238,17 +333,31 @@ export default function LandingPage({ currentUser, onLogout }) {
         </div>
       </section>
 
-      {/* ── CTA Banner ── */}
+      {/* ── CTA Banner ─────────────────────────────────── */}
       {!currentUser && (
         <section className="lp-cta-banner">
-          <div className="lp-section-inner" style={{textAlign:"center"}}>
-            <h2 className="lp-cta-title">Start collaborating for free</h2>
-            <p className="lp-cta-sub">No credit card required. Up to 3 boards free forever.</p>
-            <div style={{display:"flex",gap:12,justifyContent:"center",marginTop:24}}>
-              <button className="lp-btn-primary lp-btn-lg" onClick={() => navigate("/register")}>
-                Get started free
+          <div className="lp-section-inner" style={{ textAlign: "center", position: "relative", zIndex: 1 }}>
+            {/* Decorative element */}
+            <div style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 56, height: 56, borderRadius: "var(--r-lg)",
+              background: "var(--lime-muted)", border: "1px solid var(--lime-border)",
+              marginBottom: "1.5rem", fontSize: "1.5rem",
+            }}>✦</div>
+            <h2 className="lp-cta-title">Start collaborating today</h2>
+            <p className="lp-cta-sub">No credit card required. Up to 3 boards free, forever.</p>
+            <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 24 }}>
+              <button
+                className="lp-btn-primary lp-btn-lg"
+                onClick={() => navigate("/register")}
+                style={{ display: "flex", alignItems: "center", gap: 8 }}
+              >
+                Get started free <ArrowRight size={16} />
               </button>
-              <button className="lp-btn-outline lp-btn-lg" onClick={() => navigate("/pricing")}>
+              <button
+                className="lp-btn-outline lp-btn-lg"
+                onClick={() => navigate("/pricing")}
+              >
                 View pricing
               </button>
             </div>
@@ -256,25 +365,32 @@ export default function LandingPage({ currentUser, onLogout }) {
         </section>
       )}
 
-      {/* ── Footer ── */}
+      {/* ── Footer ─────────────────────────────────────── */}
       <footer className="lp-footer">
         <div className="lp-footer-inner">
           <div className="lp-footer-brand">
-            <div className="lp-logo-icon" style={{width:24,height:24}}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
-                <path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/>
+            <div className="lp-logo-icon" style={{ width: 22, height: 22, flexShrink: 0 }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="#0A0A14">
+                <path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z" />
               </svg>
             </div>
-            <span style={{fontWeight:700,fontSize:"0.95rem"}}>Boardly</span>
+            <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "0.9rem" }}>
+              CollabBoard
+            </span>
           </div>
           <div className="lp-footer-links">
-            {["Privacy","Terms","Security","Status","Blog"].map(l => (
+            {["Privacy", "Terms", "Security", "Status", "Blog", "Changelog"].map((l) => (
               <span key={l} className="lp-footer-link">{l}</span>
             ))}
           </div>
-          <p className="lp-footer-copy">© {new Date().getFullYear()} Boardly, Inc. All rights reserved.</p>
+          <p className="lp-footer-copy">© {new Date().getFullYear()} CollabBoard, Inc.</p>
         </div>
       </footer>
+
+      <style>{`
+        .hidden-desktop { display: none; }
+        @media (max-width: 768px) { .hidden-desktop { display: flex; } }
+      `}</style>
     </div>
   );
 }
